@@ -1,4 +1,3 @@
-import { showError } from '../foundry/notifications';
 import type { KankaApiResult } from '../types/kanka';
 import type AccessToken from './AccessToken';
 import NotAuthenticatedError from './NotAuthenticatedError';

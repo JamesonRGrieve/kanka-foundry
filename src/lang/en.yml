@@ -189,9 +189,9 @@ KANKA:
         baseUrl:
             label: Kanka URL
             hint: |
-                You can enter your personal Kanka URL here if you have one. Otherwise use https://api.kanka.io.
-                Please keep in mind that your Kanka installation needs to have the same API version as the official Kanka
-                to be compatible with this module.
+                You can enter your personal Kanka URL here if you have one. Please keep in mind that your Kanka
+                installation needs to have the same API version as the official Kanka to be compatible with this module.
+                Leave empty to use the default Kanka API URL.
         token:
             label: Kanka Personal Access Token
             hint: You can retrieve an access token from https://app.kanka.io/settings/api

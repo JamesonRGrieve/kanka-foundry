@@ -184,9 +184,9 @@ KANKA:
         baseUrl:
             label: Kanka URL
             hint: |
-                Gib hier die Adresse zu deiner eigenen Kanka Installation an falls du eine hast. 
-                Sonst benutze https://api.kanka.io. Bitte beachte, dass deine Kanka-Installation die gleiche API-Version haben
-                muss die die offizielle Kanka-Seite um mit diesem Modul kompatibel zu sein.
+                Gib hier die Adresse zu deiner eigenen Kanka Installation an falls du eine hast. Bitte beachte, dass
+                deine Kanka-Installation die gleiche API-Version haben muss die die offizielle Kanka-Seite um mit diesem
+                Modul kompatibel zu sein. Lasse das Feld leer, wenn du die Standard-URL von Kanka verwenden willst.
         token:
             label: Kanka Persönliches Zugriffs-Token
             hint: Du kannst ein Token auf https://app.kanka.io/settings/api erstellen

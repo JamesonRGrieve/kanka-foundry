@@ -58,7 +58,7 @@ export function registerSettings(): void {
             scope: 'world',
             config: true,
             type: String,
-            default: 'https://api.kanka.io',
+            default: '',
             onChange: (value) => api.switchBaseUrl(value ?? ''),
         },
     );

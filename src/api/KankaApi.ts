@@ -23,10 +23,12 @@ import KankaFetcher from './KankaFetcher';
 import type RateLimiter from './RateLimiter';
 
 export default class KankaApi {
+    static defaultURL = 'https://api.kanka.io/1.0';
+
     #fetcher: KankaFetcher;
 
-    public constructor(baseUrl = 'https://api.kanka.io/1.0') {
-        this.#fetcher = new KankaFetcher(baseUrl);
+    public constructor() {
+        this.#fetcher = new KankaFetcher(KankaApi.defaultURL);
     }
 
     public get isReady(): boolean {
@@ -51,7 +53,7 @@ export default class KankaApi {
     }
 
     public switchBaseUrl(baseUrl: string): void {
-        this.#fetcher.base = baseUrl;
+        this.#fetcher.base = baseUrl || KankaApi.defaultURL;
     }
 
     public get baseUrl(): string {
