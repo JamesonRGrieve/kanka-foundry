@@ -1,5 +1,7 @@
+import { showError } from '../foundry/notifications';
 import type { KankaApiResult } from '../types/kanka';
 import type AccessToken from './AccessToken';
+import NotAuthenticatedError from './NotAuthenticatedError';
 import RateLimiter from './RateLimiter';
 
 const freeLimit = 30;
@@ -65,6 +67,11 @@ export default class KankaFetcher {
         if (limit) this.#limiter.limit = Number.parseInt(limit, 10);
         if (limitRemaining) this.#limiter.remaining = Number.parseInt(limitRemaining, 10);
 
+        // Special handling for authentication errors
+        if (response.status === 401) {
+            throw new NotAuthenticatedError('Unauthorized');
+        }
+
         if (!response.ok) {
             throw new Error(`Kanka request error: ${response.statusText} (${response.status})`);
         }
@@ -72,7 +79,6 @@ export default class KankaFetcher {
         return response.json();
     }
 
-    // https://kanka.foobar.com
     private normalizeUrl(url: string): string {
         let result = url.trim();
 

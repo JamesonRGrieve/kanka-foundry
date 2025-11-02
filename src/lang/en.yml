@@ -233,8 +233,8 @@ KANKA:
                 Display an icon showing the current completion status of a quest in front of its name in the list of
                 all journal entries.
         error:
-            ErrorInvalidAccessToken: The given Kanka access token is invalid.
-            ErrorTokenExpired: Your Kanka access token is expired. Please provide a new one.
+            ErrorInvalidAccessToken: The given Kanka access token is invalid. Please provide a new, valid token in the settings.
+            ErrorTokenExpired: Your Kanka access token is expired. Please provide a new, valid token in the settings.
             WarningTokenExpiration: Your Kanka access token is going to expire within the next week. Please provide a new one.
     migration:
         dialog:

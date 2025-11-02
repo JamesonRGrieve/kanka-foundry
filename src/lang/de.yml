@@ -234,8 +234,8 @@ KANKA:
                 Zeigt ein Icon entsprechend des Quest-Status vor dem Namen von Quests in der Liste aller Einträge
                 an.
         error:
-            ErrorInvalidAccessToken: Das Kanka Zugriffs-Token ist ungültig..
-            ErrorTokenExpired: Dein Kanka Zugriffs-Token ist abgelaufen. Bitte hinterlege ein neues.
+            ErrorInvalidAccessToken: Das Kanka Zugriffs-Token ist ungültig. Bitte hinterlege ein neues, gültiges Token in den Einstellungen.
+            ErrorTokenExpired: Dein Kanka Zugriffs-Token ist abgelaufen. Bitte hinterlege ein neues, gültiges Token in den Einstellungen.
             WarningTokenExpiration: >
                 Dein Kanka Zugriffs-Token wird in weniger als einer Woche ablaufen. Bitte hinterlege ein neues.
     migration:

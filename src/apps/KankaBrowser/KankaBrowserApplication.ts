@@ -1,4 +1,5 @@
 import api from '../../api';
+import NotAuthenticatedError from '../../api/NotAuthenticatedError';
 import { findEntryByEntityId, hasOutdatedEntryByEntity } from '../../foundry/journalEntries';
 import type { KankaSettings } from '../../foundry/settings';
 import EntityType from '../../types/EntityType';
@@ -368,8 +369,13 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
             this.#isLoading = false;
             this.render({ force: true });
         }).catch(error => {
+            this.#isLoading = false;
             logError(error);
-            showError('browser.error.loadEntity');
+            if (error instanceof NotAuthenticatedError) {
+                showError('settings.error.ErrorInvalidAccessToken');
+            } else {
+                showError('browser.error.loadEntity');
+            }
             this.close();
         });
     }
