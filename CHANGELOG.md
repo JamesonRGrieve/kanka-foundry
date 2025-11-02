@@ -1,3 +1,11 @@
+## [5.0.2](https://github.com/eXaminator/kanka-foundry/compare/5.0.1...5.0.2) (2025-11-02)
+
+
+### Bug Fixes
+
+* change base URL seeting to a blank value if public Kanka should be used ([416c8ce](https://github.com/eXaminator/kanka-foundry/commit/416c8cecf5e42464b2119bfb8ac03875528c721c))
+* Improve error handling and message when getting an authorization error from Kanka ([63c9055](https://github.com/eXaminator/kanka-foundry/commit/63c90557303dbbaebc019ef89c3dbd704a7f4bc8))
+
 ## [5.0.1](https://github.com/eXaminator/kanka-foundry/compare/5.0.0...5.0.1) (2025-05-23)
 
 
