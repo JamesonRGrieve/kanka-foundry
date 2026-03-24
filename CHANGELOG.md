@@ -1,5 +1,8 @@
 # [6.0.0](https://github.com/eXaminator/kanka-foundry/compare/5.0.2...6.0.0) (2026-03-24)
 
+## Attention: AI Use
+This release is the first version of this module to include AI generated code. This project will adhere to FoundryVTTs
+rules on the matter. Please take a look at the readme for more information.
 
 ### Bug Fixes
 
