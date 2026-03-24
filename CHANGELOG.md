@@ -1,3 +1,26 @@
+# [6.0.0](https://github.com/eXaminator/kanka-foundry/compare/5.0.2...6.0.0) (2026-03-24)
+
+
+### Bug Fixes
+
+* prevent close button from being disabled during entity sync ([22ad24c](https://github.com/eXaminator/kanka-foundry/commit/22ad24cdf14329863c022bc657a68ede67a6b635)), closes [#158](https://github.com/eXaminator/kanka-foundry/issues/158)
+* replace deprecated global TextEditor with namespaced version ([47e613a](https://github.com/eXaminator/kanka-foundry/commit/47e613a39e7a60b17784d2122f0457018c0579c7))
+* search filter in entity browser not filtering entries ([15f7e45](https://github.com/eXaminator/kanka-foundry/commit/15f7e45acdc54658c28b3a0c1dede98524ad1715)), closes [#159](https://github.com/eXaminator/kanka-foundry/issues/159)
+* set default ownership of entries to "none" if automatic permission setting is disabled ([89d3097](https://github.com/eXaminator/kanka-foundry/commit/89d3097b0df7eae836c76ee9a300d13ca54e724b))
+
+
+### Features
+
+* add support for FoundryVTT v14 ([bb34b88](https://github.com/eXaminator/kanka-foundry/commit/bb34b882f88917178000a79fbe64806518e066d7))
+* migrate journal sheets to Foundry v13 ApplicationV2 API ([21c98ab](https://github.com/eXaminator/kanka-foundry/commit/21c98abf92429c1734841281a3bb68d95b9904e6))
+* update changed (or soon changing) and add some new(ish) kanka entity properties ([03387b0](https://github.com/eXaminator/kanka-foundry/commit/03387b0233cba506ed1a18e83cbfce00cdc8d4b5))
+
+
+### BREAKING CHANGES
+
+* Rewrite Journals to user the v13 ApplicationV2 base classes and
+set the minimum supported FVTT Version to v13.
+
 ## [5.0.2](https://github.com/eXaminator/kanka-foundry/compare/5.0.1...5.0.2) (2025-11-02)
 
 
