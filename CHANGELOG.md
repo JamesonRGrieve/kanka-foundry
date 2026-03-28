@@ -1,3 +1,10 @@
+## [6.0.2](https://github.com/eXaminator/kanka-foundry/compare/6.0.1...6.0.2) (2026-03-28)
+
+
+### Bug Fixes
+
+* preserve class names in production build for Foundry sheet registration ([542477c](https://github.com/eXaminator/kanka-foundry/commit/542477ca3005424b858c301308a421aa285c1b69)), closes [#162](https://github.com/eXaminator/kanka-foundry/issues/162)
+
 ## [6.0.1](https://github.com/eXaminator/kanka-foundry/compare/6.0.0...6.0.1) (2026-03-28)
 
 
