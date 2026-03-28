@@ -31,6 +31,11 @@ export default defineConfig({
             formats: ['es'],
             fileName: () => 'index.js',
         },
+        rolldownOptions: {
+            output: {
+                keepNames: true,
+            },
+        },
     },
     cacheDir: resolve(__dirname, 'node_modules/.vite'),
     plugins: [
