@@ -1,3 +1,10 @@
+## [6.0.1](https://github.com/eXaminator/kanka-foundry/compare/6.0.0...6.0.1) (2026-03-28)
+
+
+### Bug Fixes
+
+* use Vite 8 compatible glob pattern for Handlebars helpers ([eeb5d69](https://github.com/eXaminator/kanka-foundry/commit/eeb5d69f6f341a1763eb0342a22cbf5959fae75f)), closes [#161](https://github.com/eXaminator/kanka-foundry/issues/161)
+
 # [6.0.0](https://github.com/eXaminator/kanka-foundry/compare/5.0.2...6.0.0) (2026-03-24)
 
 ## Attention: AI Use
