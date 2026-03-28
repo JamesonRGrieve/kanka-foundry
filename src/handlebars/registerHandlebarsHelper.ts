@@ -1,6 +1,6 @@
 import type { HelperDelegate } from 'handlebars';
 
-const helpers = import.meta.glob<true, '', { default: HelperDelegate }>('./helpers/!(*.test).ts', { eager: true });
+const helpers = import.meta.glob<true, '', { default: HelperDelegate }>(['./helpers/*.ts', '!./helpers/*.test.ts'], { eager: true });
 
 export default function registerHandlebarsHelpers(): void {
     for (const [path, helper] of Object.entries(helpers)) {
