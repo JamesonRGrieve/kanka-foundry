@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import type Reference from '../../types/Reference';
-import type { KankaApiEntityId, KankaApiModuleType, KankaApiId } from '../../types/kanka';
 import kankaFindReference from './kankaFindReference';
 import kankaIsAccessible from './kankaIsAccessible';
 

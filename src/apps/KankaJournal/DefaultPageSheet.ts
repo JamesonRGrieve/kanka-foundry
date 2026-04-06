@@ -1,9 +1,9 @@
 import JournalEntryPageHandlebarsSheet = foundry.applications.sheets.journal.JournalEntryPageHandlebarsSheet;
 
 import localization from '../../state/localization';
+import type { JournalEntryPageSheetExt } from '../../types/journal-sheet-augments';
 import getImprovedReference from '../../util/getImprovedReference';
 import replaceRecursiveMentions from '../../util/replaceMentions';
-import type { JournalEntryPageSheetExt } from '../../types/journal-sheet-augments';
 import type { KankaPageModel } from './models/KankaPageModel';
 
 type SystemData = foundry.data.fields.SchemaField.InitializedData<KankaPageModel.Schema>;

@@ -1,6 +1,6 @@
 import moduleConfig from '../../public/module.json';
-import type Reference from '../types/Reference';
 import type { KankaApiModuleType } from '../types/kanka';
+import type Reference from '../types/Reference';
 import getMessage from './getMessage';
 
 const MAX_FOLDER_DEPTH = 3;

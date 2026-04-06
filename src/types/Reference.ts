@@ -1,4 +1,4 @@
-import type { KankaApiEntityId, KankaApiModuleType, KankaApiId } from './kanka';
+import type { KankaApiEntityId, KankaApiId, KankaApiModuleType } from './kanka';
 
 export default interface Reference {
     name: string;

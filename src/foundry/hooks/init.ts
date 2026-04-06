@@ -3,12 +3,14 @@ import api from '../../api';
 import AccessToken from '../../api/AccessToken';
 import DefaultPageSheet from '../../apps/KankaJournal/DefaultPageSheet';
 import KankaJournalApplication from '../../apps/KankaJournal/KankaJournalApplication';
-import PostPageSheet from '../../apps/KankaJournal/PostPageSheet';
 import { KankaPageModel } from '../../apps/KankaJournal/models/KankaPageModel';
+import PostPageSheet from '../../apps/KankaJournal/PostPageSheet';
 import registerHandlebarsHelpers from '../../handlebars/registerHandlebarsHelper';
 import { logError } from '../../util/logger';
+import { registerActorSheetButtons } from '../actorSheetButton';
 import { showError, showWarning } from '../notifications';
 import { registerSettings } from '../settings';
+import { registerSyncBackHooks } from '../syncBack';
 
 function setToken(token: string): void {
     if (!token) {
@@ -83,6 +85,8 @@ export default function init(): void {
 
         registerHandlebarsHelpers();
         registerSettings();
+        registerSyncBackHooks();
+        registerActorSheetButtons();
 
         // Debug output to show current rate limiting
         if (import.meta.env.DEV) {

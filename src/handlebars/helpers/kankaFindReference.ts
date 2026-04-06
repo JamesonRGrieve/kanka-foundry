@@ -1,5 +1,5 @@
-import type Reference from '../../types/Reference';
 import type { KankaApiAnyId, KankaApiModuleType } from '../../types/kanka';
+import type Reference from '../../types/Reference';
 import resolveReference from '../../util/resolveReference';
 import kankaIsAccessible from './kankaIsAccessible';
 

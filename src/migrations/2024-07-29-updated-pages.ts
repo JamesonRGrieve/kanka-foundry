@@ -1,7 +1,7 @@
 function isOutdatedPage(page: JournalEntryPage): boolean {
     if (page.type !== 'kanka-foundry.children' && page.type !== 'kanka-foundry.family-members') return false;
 
-    return (page.system as any).snapshot.list?.every(e => typeof e === 'object');
+    return (page.system as unknown as Record<string, Record<string, unknown[]>>).snapshot.list?.every(e => typeof e === 'object');
 }
 
 // Migrate from old journal entry format to new page based format
@@ -13,13 +13,14 @@ export default async function migrate(): Promise<void> {
             .from(entry.pages.values())
             .filter(isOutdatedPage);
 
-        await entry.updateEmbeddedDocuments('JournalEntryPage', pages.map((page: any) => {
+        await entry.updateEmbeddedDocuments('JournalEntryPage', pages.map((page: JournalEntryPage) => {
+            const sys = page.system as unknown as Record<string, Record<string, unknown[]>>;
             return {
                 _id: page._id,
                 system: {
                     snapshot: {
-                        ...page.system.snapshot,
-                        list: page.system.snapshot.list.map(({ id, ref }) => id ?? ref.id),
+                        ...sys.snapshot,
+                        list: (sys.snapshot.list as { id?: unknown; ref?: { id: unknown } }[]).map(({ id, ref }) => id ?? ref?.id),
                     },
                 },
             };

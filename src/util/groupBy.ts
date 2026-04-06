@@ -12,7 +12,7 @@ type PathImpl<T, Key extends keyof T> = Key extends string
     ? T[Key] extends Primitive
     ? `${Key}`
     : T[Key] extends object
-    ? `${Key}` | `${Key}.${PathImpl<T[Key], Exclude<keyof T[Key], keyof any[]>>}`
+    ? `${Key}` | `${Key}.${PathImpl<T[Key], Exclude<keyof T[Key], keyof unknown[]>>}`
     : never
     : never;
 

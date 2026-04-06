@@ -1,21 +1,23 @@
 import api from '../../api';
 import NotAuthenticatedError from '../../api/NotAuthenticatedError';
 import { findEntryByEntityId, hasOutdatedEntryByEntity } from '../../foundry/journalEntries';
+import { showError } from '../../foundry/notifications';
 import type { KankaSettings } from '../../foundry/settings';
+import { createEntities, createEntity, updateEntity } from '../../syncEntities';
 import EntityType from '../../types/EntityType';
 import type { KankaApiCampaign, KankaApiEntity } from '../../types/kanka';
-import loadingTemplate from './templates/loading.hbs';
-import searchTemplate from './templates/search.hbs';
+import groupBy from '../../util/groupBy';
+import { logError } from '../../util/logger';
 import campaignTemplate from './templates/campaign.hbs';
 import entitiesTemplate from './templates/entities.hbs';
-import entityListPartial from './templates/partials/entity-list.hbs';
+import loadingTemplate from './templates/loading.hbs';
 import entityGridPartial from './templates/partials/entity-grid.hbs';
-import { logError } from '../../util/logger';
-import { createEntities, createEntity, updateEntity } from '../../syncEntities';
-import { showError } from '../../foundry/notifications';
-import groupBy from '../../util/groupBy';
+import entityListPartial from './templates/partials/entity-list.hbs';
+import searchTemplate from './templates/search.hbs';
+
 import ApplicationV2 = foundry.applications.api.ApplicationV2;
 import HandlebarsApplicationMixin = foundry.applications.api.HandlebarsApplicationMixin;
+
 import type { DeepPartial } from 'fvtt-types/utils';
 
 const entityTypes: Partial<Record<EntityType, { icon: string }>> = {
@@ -477,9 +479,10 @@ if (import.meta.hot) {
     });
 
     import.meta.hot.dispose(() => {
-        if ((ui as any).activeWindow instanceof KankaBrowserApplication) {
-            if (import.meta.hot) import.meta.hot.data.position = (ui as any).activeWindow.position;
-            (ui as any).activeWindow.close();
+        const uiRecord = ui as unknown as Record<string, unknown>;
+        if (uiRecord.activeWindow instanceof KankaBrowserApplication) {
+            if (import.meta.hot) import.meta.hot.data.position = uiRecord.activeWindow.position;
+            uiRecord.activeWindow.close();
         }
     });
 }

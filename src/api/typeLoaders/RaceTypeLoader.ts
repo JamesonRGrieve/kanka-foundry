@@ -1,5 +1,5 @@
+import type { KankaApiEntity, KankaApiId, KankaApiModuleType, KankaApiRace } from '../../types/kanka';
 import api from '..';
-import type { KankaApiEntity, KankaApiModuleType, KankaApiId, KankaApiRace } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 

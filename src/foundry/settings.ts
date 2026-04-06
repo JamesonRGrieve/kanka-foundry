@@ -199,6 +199,70 @@ export function registerSettings(): void {
     );
 
     game.settings?.register('kanka-foundry',
+        'createActorsForCharacters',
+        {
+            name: getMessage('settings.createActorsForCharacters.label'),
+            hint: getMessage('settings.createActorsForCharacters.hint'),
+            scope: 'world',
+            config: true,
+            type: Boolean,
+            default: true,
+        },
+    );
+
+    game.settings?.register('kanka-foundry',
+        'defaultActorType',
+        {
+            name: getMessage('settings.defaultActorType.label'),
+            hint: getMessage('settings.defaultActorType.hint'),
+            scope: 'world',
+            config: true,
+            type: String,
+            default: 'npc',
+            choices: {
+                npc: getMessage('settings.defaultActorType.values.npc'),
+                character: getMessage('settings.defaultActorType.values.character'),
+            },
+        },
+    );
+
+    game.settings?.register('kanka-foundry',
+        'pcTags',
+        {
+            name: getMessage('settings.pcTags.label'),
+            hint: getMessage('settings.pcTags.hint'),
+            scope: 'world',
+            config: true,
+            type: String,
+            default: 'pc,acolyte',
+        },
+    );
+
+    game.settings?.register('kanka-foundry',
+        'syncBackActors',
+        {
+            name: getMessage('settings.syncBackActors.label'),
+            hint: getMessage('settings.syncBackActors.hint'),
+            scope: 'world',
+            config: true,
+            type: Boolean,
+            default: true,
+        },
+    );
+
+    game.settings?.register('kanka-foundry',
+        'syncBackJournals',
+        {
+            name: getMessage('settings.syncBackJournals.label'),
+            hint: getMessage('settings.syncBackJournals.hint'),
+            scope: 'world',
+            config: true,
+            type: Boolean,
+            default: false,
+        },
+    );
+
+    game.settings?.register('kanka-foundry',
         'browserView',
         {
             scope: 'client',

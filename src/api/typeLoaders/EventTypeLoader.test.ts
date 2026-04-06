@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import api from '..';
 import type {
     KankaApiAbilityLink,
     KankaApiEntity,
     KankaApiEntityId,
-    KankaApiModuleType,
     KankaApiEvent,
     KankaApiId,
     KankaApiInventory,
+    KankaApiModuleType,
     KankaApiRelation,
 } from '../../types/kanka';
+import api from '..';
 import EventTypeLoader from './EventTypeLoader';
 
 vi.mock('../../api/KankaApi');

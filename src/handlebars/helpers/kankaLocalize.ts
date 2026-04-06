@@ -1,8 +1,8 @@
 import localization from '../../state/localization';
 
 export default function kankaLocalize(...args: unknown[]): string {
-    const options = args.pop() as Record<string, any>;
-    const data = options.hash ?? {};
+    const options = args.pop() as Record<string, unknown>;
+    const data = (options.hash ?? {}) as Record<string, string>;
 
     const parts = args.map((part) => {
         if (part === null || part === undefined) return 'notAvailable';

@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-export default vi.fn(function(this: any) {
+export default vi.fn(function(this: Record<string, unknown>) {
     this.isReady = true;
     this.reset = vi.fn();
     this.switchUser = vi.fn();

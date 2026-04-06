@@ -43,7 +43,7 @@ export default class KankaFetcher {
         return this.#base;
     }
 
-    public async fetch<T extends KankaApiResult<unknown>>(path: string): Promise<T> {
+    private async request<T>(path: string, method: string, body?: unknown): Promise<T> {
         if (!this.#token) {
             throw new Error('Missing token in KankaFetcher');
         }
@@ -52,13 +52,20 @@ export default class KankaFetcher {
 
         const url = path.startsWith('http') ? path : `${this.#base}${path}`;
 
-        const response = await fetch(url, {
+        const options: RequestInit = {
+            method,
             mode: 'cors',
             headers: {
                 Authorization: `Bearer ${this.#token.toString()}`,
                 'Content-type': 'application/json',
             },
-        });
+        };
+
+        if (body !== undefined) {
+            options.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(url, options);
 
         const limit = response.headers.get('X-RateLimit-Limit');
         const limitRemaining = response.headers.get('X-RateLimit-Remaining');
@@ -66,7 +73,6 @@ export default class KankaFetcher {
         if (limit) this.#limiter.limit = Number.parseInt(limit, 10);
         if (limitRemaining) this.#limiter.remaining = Number.parseInt(limitRemaining, 10);
 
-        // Special handling for authentication errors
         if (response.status === 401) {
             throw new NotAuthenticatedError('Unauthorized');
         }
@@ -75,7 +81,23 @@ export default class KankaFetcher {
             throw new Error(`Kanka request error: ${response.statusText} (${response.status})`);
         }
 
-        return response.json();
+        return response.json() as T;
+    }
+
+    public async fetch<T extends KankaApiResult<unknown>>(path: string): Promise<T> {
+        return this.request<T>(path, 'GET');
+    }
+
+    public async post<T extends KankaApiResult<unknown>>(path: string, body: unknown): Promise<T> {
+        return this.request<T>(path, 'POST', body);
+    }
+
+    public async patch<T extends KankaApiResult<unknown>>(path: string, body: unknown): Promise<T> {
+        return this.request<T>(path, 'PATCH', body);
+    }
+
+    public async delete(path: string): Promise<void> {
+        await this.request<unknown>(path, 'DELETE');
     }
 
     private normalizeUrl(url: string): string {

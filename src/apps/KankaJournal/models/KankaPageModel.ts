@@ -1,4 +1,5 @@
 import type Reference from "../../../types/Reference";
+
 import DataSchema = foundry.data.fields.DataSchema;
 import TypeDataModel = foundry.abstract.TypeDataModel;
 

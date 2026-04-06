@@ -1,5 +1,5 @@
-import api from '..';
 import type { KankaApiChildEntity, KankaApiModuleType } from '../../types/kanka';
+import api from '..';
 import type AbstractTypeLoader from './AbstractTypeLoader';
 
 const loaderModules = import.meta.glob<true, '', { default: ConstructorOf<AbstractTypeLoader> }>('./*TypeLoader.ts', {

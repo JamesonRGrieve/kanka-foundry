@@ -1,15 +1,15 @@
 import moduleConfig from '../../public/module.json';
 import type ReferenceCollection from '../api/ReferenceCollection';
-import type Reference from '../types/Reference';
 import type {
     AnyConstrainable,
     KankaApiChildEntity,
     KankaApiChildEntityWithChildren,
     KankaApiEntity,
     KankaApiEntityId,
-    KankaApiModuleType,
     KankaApiId,
+    KankaApiModuleType,
 } from '../types/kanka';
+import type Reference from '../types/Reference';
 import isSecret from '../util/isSecret';
 import { ensureFolderPath } from './journalFolders';
 import PageFactory from './PageFactory';

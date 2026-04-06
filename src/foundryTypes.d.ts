@@ -9,6 +9,14 @@ type FlagData = {
     references: Record<number, Reference>;
 }
 
+type ActorFlagData = {
+    kankaEntityId: KankaApiEntityId;
+    kankaChildId: KankaApiId;
+    campaign: KankaApiId;
+    snapshot: KankaApiChildEntity;
+    version: string;
+}
+
 declare module "fvtt-types/configuration" {
     interface FlagConfig {
         JournalEntry: {
@@ -18,7 +26,11 @@ declare module "fvtt-types/configuration" {
         Folder: {
             'core': Document.CoreFlags;
             'kanka-foundry': FlagData;
-        }
+        };
+        Actor: {
+            'core': Document.CoreFlags;
+            'kanka-foundry': ActorFlagData;
+        };
     }
 
     interface DataModelConfig {
@@ -53,6 +65,11 @@ declare module "fvtt-types/configuration" {
         'kanka-foundry.automaticPermissions': 'never' | 'initial' | 'always';
         'kanka-foundry.importTemplateEntities': boolean;
         'kanka-foundry.questQuestStatusIcon': boolean;
+        'kanka-foundry.createActorsForCharacters': boolean;
+        'kanka-foundry.defaultActorType': string;
+        'kanka-foundry.pcTags': string;
+        'kanka-foundry.syncBackActors': boolean;
+        'kanka-foundry.syncBackJournals': boolean;
         'kanka-foundry.migrationVersion': string,
         'kanka-foundry.collapseType_ability': boolean,
         'kanka-foundry.collapseType_campaign': boolean,

@@ -2,8 +2,8 @@ import type {
     KankaApiChildEntity,
     KankaApiChildEntityWithChildren,
     KankaApiEntity,
-    KankaApiModuleType,
     KankaApiId,
+    KankaApiModuleType,
 } from '../../types/kanka';
 import ReferenceCollection from '../ReferenceCollection';
 

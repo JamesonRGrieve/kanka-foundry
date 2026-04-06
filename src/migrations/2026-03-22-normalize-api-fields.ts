@@ -7,8 +7,8 @@ export default async function migrate(): Promise<void> {
             const pages = Array.from(entry.pages.values())
                 .filter(p => p.type === 'kanka-foundry.overview');
 
-            const updates = pages.map((page: any) => {
-                const snapshot = page.system?.snapshot;
+            const updates = pages.map((page: JournalEntryPage) => {
+                const snapshot = (page.system as unknown as Record<string, Record<string, unknown>>)?.snapshot;
                 if (!snapshot) return null;
                 const changes: Record<string, unknown> = {};
 

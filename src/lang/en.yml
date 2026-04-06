@@ -249,6 +249,24 @@ KANKA:
             hint: |
                 Display an icon showing the current completion status of a quest in front of its name in the list of
                 all journal entries.
+        createActorsForCharacters:
+            label: Create Actors for characters
+            hint: When importing characters from Kanka, also create a Foundry Actor with mapped stats.
+        defaultActorType:
+            label: Default Actor type
+            hint: The default Foundry Actor type for imported characters.
+            values:
+                npc: NPC
+                character: Player Character
+        pcTags:
+            label: PC tag names
+            hint: Comma-separated Kanka tag names that mark a character as a Player Character Actor type.
+        syncBackActors:
+            label: Sync Actor changes back to Kanka
+            hint: When enabled, changes to Actor stats in Foundry will be pushed back to Kanka as entity attributes.
+        syncBackJournals:
+            label: Sync Journal changes back to Kanka
+            hint: When enabled, changes to Journal Entry content will be pushed back to the corresponding Kanka entity.
         error:
             ErrorInvalidAccessToken: The given Kanka access token is invalid. Please provide a new, valid token in the settings.
             ErrorTokenExpired: Your Kanka access token is expired. Please provide a new, valid token in the settings.

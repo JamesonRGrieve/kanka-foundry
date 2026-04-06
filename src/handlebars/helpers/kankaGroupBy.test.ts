@@ -1,6 +1,6 @@
+import type { HelperDelegate } from 'handlebars';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import kankaGroupBy from './kankaGroupBy';
-import type { HelperDelegate } from 'handlebars';
 
 function compile(template: string, context = {}): string {
     return Handlebars.compile(template)(context);

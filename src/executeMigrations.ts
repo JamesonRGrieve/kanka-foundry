@@ -15,7 +15,7 @@ export default async function executeMigrations(): Promise<void> {
     // If there already are some, we set a specific version as already executed as it is the last one that existed before the
     // migrationVersion setting was introduced. If there already is a valid migrationVersion setting, we do nothing.
     if (!game.settings?.get('kanka-foundry', 'migrationVersion')) {
-        const hasJournalEntries = Array.from(game.journal?.values() ?? []).some((e: any) => e.getFlag('kanka-foundry', 'id'));
+        const hasJournalEntries = Array.from(game.journal?.values() ?? []).some((e: JournalEntry) => e.getFlag('kanka-foundry', 'id'));
         console.log('Kanka', hasJournalEntries)
         if (hasJournalEntries) {
             await game.settings?.set('kanka-foundry', 'migrationVersion', '2024-07-28');

@@ -1,5 +1,6 @@
 import type {
     KankaApiAbility,
+    KankaApiAttribute,
     KankaApiCampaign,
     KankaApiCharacter,
     KankaApiCreature,
@@ -229,6 +230,73 @@ export default class KankaApi {
         return this.fetchFullList<KankaApiEntity>(
             `campaigns/${Number(campaignId)}/entities?image=1&types=${types.join(',')}`,
         );
+    }
+
+    // Write methods
+
+    public async updateCharacter(
+        campaignId: KankaApiId,
+        id: KankaApiId,
+        data: Record<string, unknown>,
+    ): Promise<KankaApiCharacter> {
+        type Result = KankaApiResult<KankaApiCharacter>;
+        const result = await this.#fetcher.patch<Result>(
+            `campaigns/${String(campaignId)}/characters/${String(id)}`,
+            data,
+        );
+        return result.data;
+    }
+
+    public async createCharacter(
+        campaignId: KankaApiId,
+        data: Record<string, unknown>,
+    ): Promise<KankaApiCharacter> {
+        type Result = KankaApiResult<KankaApiCharacter>;
+        const result = await this.#fetcher.post<Result>(
+            `campaigns/${String(campaignId)}/characters`,
+            data,
+        );
+        return result.data;
+    }
+
+    // Entity attribute methods
+
+    public async getEntityAttributes(
+        campaignId: KankaApiId,
+        entityId: KankaApiEntityId,
+    ): Promise<KankaApiAttribute[]> {
+        type Result = KankaApiResult<KankaApiAttribute[]>;
+        const result = await this.#fetcher.fetch<Result>(
+            `campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes`,
+        );
+        return result.data;
+    }
+
+    public async createEntityAttribute(
+        campaignId: KankaApiId,
+        entityId: KankaApiEntityId,
+        data: { name: string; value: string; type_id?: number },
+    ): Promise<KankaApiAttribute> {
+        type Result = KankaApiResult<KankaApiAttribute>;
+        const result = await this.#fetcher.post<Result>(
+            `campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes`,
+            data,
+        );
+        return result.data;
+    }
+
+    public async updateEntityAttribute(
+        campaignId: KankaApiId,
+        entityId: KankaApiEntityId,
+        attributeId: KankaApiId,
+        data: { value: string },
+    ): Promise<KankaApiAttribute> {
+        type Result = KankaApiResult<KankaApiAttribute>;
+        const result = await this.#fetcher.patch<Result>(
+            `campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes/${String(attributeId)}`,
+            data,
+        );
+        return result.data;
     }
 
     private async fetchFullList<T>(path: string): Promise<T[]> {
