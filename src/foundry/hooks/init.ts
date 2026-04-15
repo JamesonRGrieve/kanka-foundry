@@ -1,6 +1,7 @@
 import moduleConfig from '../../../public/module.json';
 import api from '../../api';
 import AccessToken from '../../api/AccessToken';
+import EventTrackerApplication from '../../apps/EventTracker/EventTrackerApplication';
 import DefaultPageSheet from '../../apps/KankaJournal/DefaultPageSheet';
 import KankaJournalApplication from '../../apps/KankaJournal/KankaJournalApplication';
 import { KankaPageModel } from '../../apps/KankaJournal/models/KankaPageModel';
@@ -62,21 +63,23 @@ export default function init(): void {
             ),
         );
 
-        DocumentSheetConfig.registerSheet(
+        const SheetConfig = foundry.applications.apps.DocumentSheetConfig;
+
+        SheetConfig.registerSheet(
             JournalEntry,
             moduleConfig.name,
             KankaJournalApplication as unknown as foundry.applications.api.DocumentSheetV2.AnyConstructor,
             { makeDefault: false },
         );
 
-        DocumentSheetConfig.registerSheet(
+        SheetConfig.registerSheet(
             JournalEntryPage,
             moduleConfig.name,
             PostPageSheet as unknown as foundry.applications.api.DocumentSheetV2.AnyConstructor,
             { types: [`${moduleConfig.id}.post`], makeDefault: false },
         );
 
-        DocumentSheetConfig.registerSheet(
+        SheetConfig.registerSheet(
             JournalEntryPage,
             moduleConfig.name,
             DefaultPageSheet as unknown as foundry.applications.api.DocumentSheetV2.AnyConstructor,
@@ -95,6 +98,12 @@ export default function init(): void {
 
         api.switchBaseUrl(game.settings?.get('kanka-foundry', 'baseUrl') ?? '');
         setToken(game.settings?.get('kanka-foundry', 'accessToken') ?? '');
+
+        // Expose EventTracker for macro access: game.modules.get('kanka-foundry').eventTracker.render(true)
+        const mod = game.modules?.get('kanka-foundry') as unknown as Record<string, unknown> | undefined;
+        if (mod) {
+            mod.eventTracker = new EventTrackerApplication();
+        }
     } catch (error) {
         logError(error);
         showError('general.initializationError');

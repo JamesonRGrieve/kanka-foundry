@@ -84,5 +84,6 @@ declare module "fvtt-types/configuration" {
         'kanka-foundry.collapseType_organisation': boolean,
         'kanka-foundry.collapseType_quest': boolean,
         'kanka-foundry.collapseType_race': boolean,
+        'kanka-foundry.currentDay': number,
     }
 }

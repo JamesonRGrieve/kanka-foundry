@@ -16,8 +16,11 @@ import type {
     KankaApiNote,
     KankaApiOrganisation,
     KankaApiQuest,
+    KankaApiQuestElement,
     KankaApiRace,
     KankaApiResult,
+    KankaApiTimeline,
+    KankaApiTimelineElement,
 } from '../types/kanka';
 import type AccessToken from './AccessToken';
 import KankaFetcher from './KankaFetcher';
@@ -285,6 +288,68 @@ export default class KankaApi {
         return result.data;
     }
 
+    // Quest element methods
+
+    public async getQuestElements(
+        campaignId: KankaApiId,
+        questId: KankaApiId,
+    ): Promise<KankaApiQuestElement[]> {
+        return this.fetchFullList<KankaApiQuestElement>(
+            `campaigns/${String(campaignId)}/quests/${String(questId)}/quest_elements`,
+        );
+    }
+
+    public async patchQuestElement(
+        campaignId: KankaApiId,
+        questId: KankaApiId,
+        elementId: KankaApiId,
+        data: Partial<Pick<KankaApiQuestElement, 'colour' | 'name'>>,
+    ): Promise<KankaApiQuestElement> {
+        type Result = KankaApiResult<KankaApiQuestElement>;
+        const result = await this.#fetcher.patch<Result>(
+            `campaigns/${String(campaignId)}/quests/${String(questId)}/quest_elements/${String(elementId)}`,
+            data,
+        );
+        return result.data;
+    }
+
+    // Timeline methods
+
+    public async getTimeline(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiTimeline> {
+        type Result = KankaApiResult<KankaApiTimeline>;
+        const result = await this.#fetcher.fetch<Result>(
+            `campaigns/${String(campaignId)}/timelines/${String(id)}?related=1`,
+        );
+        return result.data;
+    }
+
+    public async getAllTimelines(campaignId: KankaApiId): Promise<KankaApiTimeline[]> {
+        return this.fetchFullList<KankaApiTimeline>(`campaigns/${Number(campaignId)}/timelines?related=1`);
+    }
+
+    public async getTimelineElements(
+        campaignId: KankaApiId,
+        timelineId: KankaApiId,
+    ): Promise<KankaApiTimelineElement[]> {
+        return this.fetchFullList<KankaApiTimelineElement>(
+            `campaigns/${String(campaignId)}/timelines/${String(timelineId)}/timeline_elements`,
+        );
+    }
+
+    public async patchTimelineElement(
+        campaignId: KankaApiId,
+        timelineId: KankaApiId,
+        elementId: KankaApiId,
+        data: Partial<Pick<KankaApiTimelineElement, 'colour' | 'name'>>,
+    ): Promise<KankaApiTimelineElement> {
+        type Result = KankaApiResult<KankaApiTimelineElement>;
+        const result = await this.#fetcher.patch<Result>(
+            `campaigns/${String(campaignId)}/timelines/${String(timelineId)}/timeline_elements/${String(elementId)}`,
+            data,
+        );
+        return result.data;
+    }
+
     public async updateEntityAttribute(
         campaignId: KankaApiId,
         entityId: KankaApiEntityId,
@@ -295,6 +360,31 @@ export default class KankaApi {
         const result = await this.#fetcher.patch<Result>(
             `campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes/${String(attributeId)}`,
             data,
+        );
+        return result.data;
+    }
+
+    public async uploadEntityImage(
+        campaignId: KankaApiId,
+        entityId: KankaApiEntityId,
+        imageBlob: Blob,
+    ): Promise<void> {
+        type Result = KankaApiResult<unknown>;
+        await this.#fetcher.uploadFile<Result>(
+            `campaigns/${String(campaignId)}/entities/${String(entityId)}/image`,
+            imageBlob,
+            'file',
+        );
+    }
+
+    public async getEntityAssets(
+        campaignId: KankaApiId,
+        entityId: KankaApiEntityId,
+    ): Promise<Array<{ id: number; name: string; _url?: string; _file?: boolean; type_id?: number }>> {
+        type Asset = { id: number; name: string; _url?: string; _file?: boolean; type_id?: number };
+        type Result = KankaApiResult<Asset[]>;
+        const result = await this.#fetcher.fetch<Result>(
+            `campaigns/${String(campaignId)}/entities/${String(entityId)}/entity_assets`,
         );
         return result.data;
     }

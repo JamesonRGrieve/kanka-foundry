@@ -272,6 +272,16 @@ export function registerSettings(): void {
         },
     );
 
+    game.settings?.register('kanka-foundry',
+        'currentDay',
+        {
+            scope: 'world',
+            config: false,
+            type: Number,
+            default: 0,
+        },
+    );
+
     for (const type of Object.values(EntityType)) {
         if (type === EntityType.campaign) {
             continue;

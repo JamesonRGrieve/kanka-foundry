@@ -60,7 +60,7 @@ export default function hbsPlugin(): Plugin {
 
         return `
         ${partialImports};
-        Hooks.once('init', () => loadTemplates([${fullTemplateUrl}]));
+        Hooks.once('init', () => foundry.applications.handlebars.loadTemplates([${fullTemplateUrl}]));
         export default ${fullTemplateUrl};
         `;
     }

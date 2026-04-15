@@ -408,10 +408,11 @@ export interface KankaApiOrganisation extends KankaApiChildEntityWithChildren {
 
 export interface KankaApiQuestElement extends KankaApiVisibilityConstrainable {
     id: KankaApiId;
+    name: string;
     entity_id: KankaApiEntityId;
     colour: string | null;
-    description: string;
-    description_parsed: string | null;
+    entry: string;
+    entry_parsed: string | null;
     role: string | null;
 }
 
@@ -453,6 +454,42 @@ export interface KankaApiEvent extends KankaApiChildEntityWithChildren {
     calendar_month: number | null;
     calendar_day: number | null;
     calendar_reminder_length: number | null;
+}
+
+export interface KankaApiTimelineElement extends KankaApiVisibilityConstrainable {
+    id: KankaApiId;
+    era_id: KankaApiId;
+    timeline_id: KankaApiId;
+    entity_id: KankaApiEntityId | null;
+    name: string;
+    entry: string;
+    entry_parsed: string | null;
+    date: string | null;
+    colour: string | null;
+    position: number;
+    icon: string | null;
+    is_collapsed: boolean;
+}
+
+export interface KankaApiTimelineEra {
+    id: KankaApiId;
+    name: string;
+    abbreviation: string | null;
+    start_year: number | null;
+    end_year: number | null;
+    entry: string | null;
+    entry_parsed: string | null;
+    elements: KankaApiTimelineElement[];
+    is_collapsed: boolean;
+    position: number;
+}
+
+export interface KankaApiTimeline extends KankaApiChildEntityWithChildren {
+    /** @deprecated Will be removed; use parents[] instead */
+    timeline_id?: KankaApiId | null;
+    type: string | null;
+    eras: KankaApiTimelineEra[];
+    revert_order: number;
 }
 
 interface KankaEntityModule {

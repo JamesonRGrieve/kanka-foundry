@@ -1,1 +1,1 @@
-export default new Localization('en');
+export default new foundry.helpers.Localization('en');

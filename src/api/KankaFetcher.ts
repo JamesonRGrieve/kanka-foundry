@@ -3,12 +3,12 @@ import type AccessToken from './AccessToken';
 import NotAuthenticatedError from './NotAuthenticatedError';
 import RateLimiter from './RateLimiter';
 
-const freeLimit = 30;
+const defaultLimit = 300;
 
 export default class KankaFetcher {
     #base: string;
     #token?: AccessToken;
-    #limiter = new RateLimiter(61, freeLimit);
+    #limiter = new RateLimiter(61, defaultLimit);
 
     constructor(base: string) {
         this.#base = this.normalizeUrl(base);
@@ -100,6 +100,42 @@ export default class KankaFetcher {
         await this.request<unknown>(path, 'DELETE');
     }
 
+    public async uploadFile<T extends KankaApiResult<unknown>>(
+        path: string,
+        file: Blob,
+        fieldName = 'image',
+    ): Promise<T> {
+        if (!this.#token) {
+            throw new Error('Missing token in KankaFetcher');
+        }
+
+        await this.#limiter.slot();
+
+        const url = path.startsWith('http') ? path : `${this.#base}${path}`;
+        const formData = new FormData();
+        formData.append(fieldName, file);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+                Authorization: `Bearer ${this.#token.toString()}`,
+            },
+            body: formData,
+        });
+
+        const limit = response.headers.get('X-RateLimit-Limit');
+        const limitRemaining = response.headers.get('X-RateLimit-Remaining');
+        if (limit) this.#limiter.limit = Number.parseInt(limit, 10);
+        if (limitRemaining) this.#limiter.remaining = Number.parseInt(limitRemaining, 10);
+
+        if (!response.ok) {
+            throw new Error(`Kanka upload error: ${response.statusText} (${response.status})`);
+        }
+
+        return response.json() as unknown as T;
+    }
+
     private normalizeUrl(url: string): string {
         let result = url.trim();
 
@@ -107,16 +143,20 @@ export default class KankaFetcher {
             result = `${result}/`;
         }
 
-        if (!result.startsWith('https://api.kanka.io/') && !result.endsWith('api/1.0/')) {
-            result = `${result}api/1.0/`;
-        }
-
-        if (!result.endsWith('1.0/')) {
-            result = `${result}1.0/`;
-        }
-
         if (!result.startsWith('http')) {
             result = `https://${result}`;
+        }
+
+        // Already has versioned API path
+        if (result.endsWith('1.0/')) {
+            return result;
+        }
+
+        // Official kanka.io uses /api/ prefix; self-hosted does not
+        if (result.includes('kanka.io')) {
+            result = `${result}api/1.0/`;
+        } else {
+            result = `${result}1.0/`;
         }
 
         return result;

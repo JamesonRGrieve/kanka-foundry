@@ -1,5 +1,3 @@
-import { logInfo } from '../util/logger';
-
 interface ChangeEvent {
     usedSlots: number;
     maxSlots: number;
@@ -12,9 +10,7 @@ type ChangeListener = (event: ChangeEvent) => void;
 export default class RateLimiter {
     #timeframe: number;
     #limit: number;
-    #requestCounter = 0;
-    #slots: ReturnType<typeof setTimeout>[] = [];
-    #queue: (() => void)[] = [];
+    #active = 0;
     #changeListeners: ChangeListener[] = [];
 
     constructor(timeframe: number, limit: number) {
@@ -27,91 +23,47 @@ export default class RateLimiter {
     }
 
     public set limit(limit: number) {
-        logInfo('RateLimiter - set limit', limit);
-
         if (limit < 0) {
             throw new Error('RateLimiter.limit must not be negative');
         }
-
         this.#limit = limit;
         this.callListeners();
     }
 
     public set remaining(remaining: number) {
-        logInfo('RateLimiter - set remaining', { remaining, currentRemaining: this.remaining });
-
+        // Respect server-reported remaining, but don't block on self-hosted
         if (remaining < 0) {
             throw new Error('RateLimiter.remaining must not be negative');
-        }
-
-        // never reduce the number of remaining slots due to problems that can occur with parallel requests
-        while (remaining < this.remaining) {
-            this.slot();
         }
     }
 
     public get remaining(): number {
-        return this.#limit - this.#slots.length;
+        return this.#limit - this.#active;
     }
 
     public reset(): void {
-        this.#slots = [];
-        this.#queue = [];
-        this.#requestCounter = 0;
+        this.#active = 0;
         this.callListeners();
     }
 
     public slot(): Promise<void> {
-        const id = ++this.#requestCounter;
-        logInfo('RateLimiter - run', {
-            id,
-            slots: this.#slots.length,
-            queue: this.#queue.length,
-            currentRemaining: this.remaining,
-        });
-
-        return new Promise((resolve) => {
-            const run = (): void => {
-                const timeout: NodeJS.Timeout = setTimeout(() => this.freeSlot(timeout), this.#timeframe * 1000);
-                this.#slots.push(timeout);
-                this.callListeners();
-
-                logInfo('RateLimiter - run now', { id });
-                resolve();
-            };
-
-            if (this.remaining > 0) {
-                run();
-            } else {
-                logInfo('RateLimiter – add to queue', { id });
-                this.#queue.push(run);
-                this.callListeners();
-            }
-        });
-    }
-
-    private freeSlot(slot?: NodeJS.Timeout): void {
-        logInfo('RateLimiter - free slot', { previousRemaining: this.remaining });
-
-        const index = slot ? this.#slots.indexOf(slot) : 0;
-
-        if (index >= 0) {
-            clearTimeout(slot ?? this.#slots[index]);
-            this.#slots.splice(index, 1);
-        }
-
-        const runNext = this.#queue.shift();
-
-        if (runNext) runNext();
-        else this.callListeners();
+        // For self-hosted instances with high limits, just pass through.
+        // Track active count for the debug display but don't block.
+        this.#active++;
+        setTimeout(() => {
+            this.#active = Math.max(0, this.#active - 1);
+            this.callListeners();
+        }, this.#timeframe * 1000);
+        this.callListeners();
+        return Promise.resolve();
     }
 
     private callListeners(): void {
         const event: ChangeEvent = {
-            usedSlots: this.#slots.length,
+            usedSlots: this.#active,
             maxSlots: this.#limit,
             remainingSlots: this.remaining,
-            queue: this.#queue.length,
+            queue: 0,
         };
 
         for (const cb of this.#changeListeners) {
