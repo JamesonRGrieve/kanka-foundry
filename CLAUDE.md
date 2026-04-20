@@ -8,22 +8,22 @@ Kanka-Foundry is a Foundry VTT module that integrates with [Kanka.io](https://ka
 
 ## Build & Development Commands
 
-- `npm ci` — install dependencies (use instead of `npm install`)
-- `npm run build` — production build (output in `dist/`)
-- `npm start` — Vite dev server with HMR (NODE_ENV=development)
-- `npm run check` — run both type checking and linting (**must pass before committing**)
-- `npm run check:types` — TypeScript type checking only
-- `npm run check:lint` — Biome linting only
-- `npm test` — run tests with Vitest
-- `npm run test:watch` — run tests in watch mode
-- `npm run test:coverage` — run tests with coverage
+- `pnpm install --frozen-lockfile` — install dependencies (use instead of `pnpm install`)
+- `pnpm build` — production build (output in `dist/`)
+- `pnpm start` — Vite dev server with HMR (NODE_ENV=development)
+- `pnpm check` — run both type checking and linting (**must pass before committing**)
+- `pnpm check:types` — TypeScript type checking only
+- `pnpm check:lint` — Biome linting only
+- `pnpm test` — run tests with Vitest
+- `pnpm test:watch` — run tests in watch mode
+- `pnpm test:coverage` — run tests with coverage
 
 ### Docker Dev Workflow
 
 1. Copy `secrets.json.dist` to `secrets.json` and fill in credentials
-2. `npm run build` (initial build)
+2. `pnpm build` (initial build)
 3. `docker compose up` (runs Foundry VTT)
-4. `npm start` (Vite dev server at http://localhost:3000)
+4. `pnpm start` (Vite dev server at http://localhost:3000)
 
 ## Architecture Overview
 
@@ -70,7 +70,7 @@ Always verify response shapes against real API data rather than relying solely o
 - **TypeScript**: strict mode enabled
 - **Tests**: Vitest — test files are co-located with source (`*.test.ts`)
 - **Formatting**: Prettier
-- Always run `npm run check` before committing
+- Always run `pnpm check` before committing
 
 ## Commit Guidelines
 

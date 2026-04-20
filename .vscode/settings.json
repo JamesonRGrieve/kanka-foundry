@@ -1,6 +1,6 @@
 {
     "prettier.enable": true,
-    "vitest.commandLine": "npm run test:watch --",
+    "vitest.commandLine": "pnpm test:watch --",
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     // "html.format.indentHandlebars": true,
     // "html.format.templating": true,

@@ -135,7 +135,7 @@ This software is licensed under the MIT License. See the LICENSE file in this re
 All issues and merge requests are welcomed. But please understand if I cannot always immediately comment or review
 your contribution. Merge requests will always receive a code review by me and must adhere to my general standards and
 style (which are not really documented at this point). I at least expect eslint and typescript to not throw any errors
-when running `npm run check`.
+when running `pnpm check`.
 
 ### Translations
 
@@ -150,7 +150,7 @@ This module uses `vite` to build the code and allows using its dev-server. You n
 
 #### Setup
 
-Before you do anything else you should install all dependencies by running `npm ci` in the root folder of the module.
+Before you do anything else you should install all dependencies by running `pnpm install --frozen-lockfile` in the root folder of the module.
 
 Next you might want to copy `secrets.json.dist` to a new file called `secrets.json` and fill out the information in that
 as appropriate for you. This file is used by Docker to download and runn foundry in later steps. If you try to avoid
@@ -163,7 +163,7 @@ installed on your system.
 
 #### Building
 
-You can run `npm run build` to build the module. The module code will be generated inside the `dist` folder.
+You can run `pnpm build` to build the module. The module code will be generated inside the `dist` folder.
 
 You could now copy this folder into your Foundry modules folder, but you might need to restart foundry for it to get any changes.
 This is not necessary if you use the provided `docker-compose.yml` configuration to run Foundry in Docker. Read the next part for more info on this.
@@ -174,9 +174,9 @@ The easiest way to test changes for this module is to run Foundry via the `docke
 This will give you automatic browser reloads on changes (and even HMR for certain parts).
 
 1. Make sure you have done everything under "Setup" above.
-2. Create an initial build via `npm run build`
+2. Create an initial build via `pnpm build`
 3. Run Foundry via `docker compose up`.
-4. Run dev-server via `npm start`
+4. Run dev-server via `pnpm start`
 
 You can now go to `http://localhost:3000` and should see Foundry. Install other modules and rule systems as you see fit and create
 a world for your tests. Changes in the code should be reflected immediately or after a browser refresh (which should be made automatically).
