@@ -19,10 +19,14 @@ export async function syncTokenImage(
     force = false,
 ): Promise<void> {
     const proto = (actor as unknown as {
-        prototypeToken?: { texture?: { src?: string } };
+        prototypeToken?: {
+            texture?: { src?: string };
+            ring?: { enabled?: boolean; subject?: { texture?: string | null } };
+        };
     }).prototypeToken;
 
     const currentToken = proto?.texture?.src;
+    const currentRingSubject = proto?.ring?.subject?.texture;
     const isDefault = !currentToken
         || currentToken === 'icons/svg/mystery-man.svg'
         || currentToken === '';
@@ -30,28 +34,39 @@ export async function syncTokenImage(
 
     if (!force && !isDefault && !wasAutoSet) return;
 
-    // Check Kanka entity assets for a "token" file
+    // Check Kanka entity assets for a "token" file. We only consult the API to
+    // confirm the asset exists; the URL we write into Foundry is the canonical
+    // redirect endpoint, NOT the per-upload /storage/<uuid>.<ext> URL. That way
+    // when the asset is replaced on Kanka the stored URL keeps resolving
+    // without any sync step.
     let tokenUrl: string | null = null;
     try {
         const assets = await api.getEntityAssets(campaignId, kankaEntityId);
         const tokenAsset = assets.find((a) => a.name === 'token' && a._file);
-        if (tokenAsset?._url) {
-            tokenUrl = tokenAsset._url;
+        if (tokenAsset) {
+            const base = api.baseUrl.replace(/\/+$/u, '');
+            tokenUrl = `${base}/canonical.php?c=${campaignId}&e=${kankaEntityId}&a=token`;
         }
     } catch (error) {
         logError(`Failed to fetch entity assets for ${actor.name}`, error);
     }
 
     // Determine the image to use for the token
-    // Kanka asset URL is the source of truth — use directly, no local download
+    // Kanka canonical URL is the source of truth — survives asset re-upload.
     const tokenSource = tokenUrl || actor.img;
     if (!tokenSource || tokenSource === 'icons/svg/mystery-man.svg') return;
 
-    // Skip if already set to this source
-    if (currentToken === tokenSource) return;
+    // Skip if both fields already match the desired source
+    if (currentToken === tokenSource && currentRingSubject === tokenSource) return;
 
+    // Always mirror the same source into ring.subject.texture: with the dynamic
+    // token ring enabled, Foundry V13+ renders ring.subject.texture instead of
+    // texture.src. If the ring is disabled this field is harmless. Without this,
+    // a stale local subject texture (e.g. a leftover portrait file) keeps
+    // rendering even though texture.src is correct.
     await actor.update({
         'prototypeToken.texture.src': tokenSource,
+        'prototypeToken.ring.subject.texture': tokenSource,
     } as Record<string, unknown>);
 
     await (actor as unknown as { setFlag(scope: string, key: string, value: unknown): Promise<void> }).setFlag('kanka-foundry', 'tokenAutoSync', true);
