@@ -308,7 +308,10 @@ export default class EventTrackerApplication extends ApplicationV2 {
         if (!actors) return [];
         const names: string[] = [];
         for (const actor of actors) {
-            if (actor.type === 'character') {
+            // wh40k-rpg actor types are <system>-<kind>; legacy bare
+            // 'character' is migrated away by
+            // 2026-05-11-system-prefix-actor-types.
+            if (actor.type.endsWith('-character')) {
                 names.push(actor.name);
             }
         }

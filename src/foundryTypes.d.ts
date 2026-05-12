@@ -17,11 +17,22 @@ type ActorFlagData = {
     version: string;
 }
 
+type CampaignJournalFlagData = {
+    campaign: KankaApiId;
+    campaignDescription: boolean;
+    campaignSnapshot: {
+        id: KankaApiId;
+        name: string;
+        entry: string;
+        image_full?: string;
+    };
+}
+
 declare module "fvtt-types/configuration" {
     interface FlagConfig {
         JournalEntry: {
             'core': Document.CoreFlags;
-            'kanka-foundry': FlagData;
+            'kanka-foundry': FlagData & Partial<CampaignJournalFlagData>;
         };
         Folder: {
             'core': Document.CoreFlags;
@@ -67,6 +78,7 @@ declare module "fvtt-types/configuration" {
         'kanka-foundry.questQuestStatusIcon': boolean;
         'kanka-foundry.createActorsForCharacters': boolean;
         'kanka-foundry.defaultActorType': string;
+        'kanka-foundry.defaultGameSystem': string;
         'kanka-foundry.pcTags': string;
         'kanka-foundry.syncBackActors': boolean;
         'kanka-foundry.syncBackJournals': boolean;

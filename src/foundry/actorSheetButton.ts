@@ -1,7 +1,13 @@
 import api from '../api';
 import type { KankaApiId } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
-import { CHARACTERISTIC_REVERSE_MAP, STAT_REVERSE_MAP } from './actorFactory';
+import {
+    BIO_MAP,
+    CHARACTERISTIC_REVERSE_MAP,
+    ORIGIN_MAP,
+    ROOT_STRING_MAP,
+    STAT_REVERSE_MAP,
+} from './actorAttributeMaps';
 
 /**
  * Extract mechanical stats from a Foundry Actor and create Kanka attributes.
@@ -27,7 +33,11 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
 
         const characterData: Record<string, unknown> = {
             name: actor.name,
-            type: (actor.type as string) === 'character' ? 'Acolyte' : 'NPC',
+            // wh40k-rpg actor types are <system>-<kind>; the kind suffix
+            // distinguishes PC vs NPC. Legacy bare 'character' was migrated
+            // away by 2026-05-11-system-prefix-actor-types, so we only need
+            // to inspect the suffix here.
+            type: (actor.type as string).endsWith('-character') ? 'Acolyte' : 'NPC',
         };
 
         if (bio) {
@@ -38,6 +48,16 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
 
         const kankaCharacter = await api.createCharacter(numericCampaignId, characterData);
         logInfo(`Created Kanka character "${actor.name}" with id ${String(kankaCharacter.id)}`);
+
+        const createAttributeIfPresent = async (name: string, value: unknown): Promise<void> => {
+            if (value === undefined || value === null || value === '') return;
+
+            await api.createEntityAttribute(
+                numericCampaignId,
+                kankaCharacter.entity_id,
+                { name, value: String(value) },
+            );
+        };
 
         // Create attributes for mechanical stats
         const characteristics = system.characteristics as Record<string, Record<string, unknown>> | undefined;
@@ -73,6 +93,19 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
                     { name: kankaName, value: String(value) },
                 );
             }
+        }
+
+        for (const [foundryKey, kankaName] of Object.entries(BIO_MAP)) {
+            await createAttributeIfPresent(kankaName, bio?.[foundryKey]);
+        }
+
+        const originPath = system.originPath as Record<string, unknown> | undefined;
+        for (const [foundryKey, kankaName] of Object.entries(ORIGIN_MAP)) {
+            await createAttributeIfPresent(kankaName, originPath?.[foundryKey]);
+        }
+
+        for (const [foundryKey, kankaName] of Object.entries(ROOT_STRING_MAP)) {
+            await createAttributeIfPresent(kankaName, system[foundryKey]);
         }
 
         // Set kanka-foundry flags on the Actor

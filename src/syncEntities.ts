@@ -24,6 +24,7 @@ async function handleEntity(
         const createActors = game.settings?.get('kanka-foundry', 'createActorsForCharacters') ?? true;
         if (createActors) {
             const defaultType = (game.settings?.get('kanka-foundry', 'defaultActorType') as string) ?? 'npc';
+            const gameSystem = (game.settings?.get('kanka-foundry', 'defaultGameSystem') as string) ?? 'dh2';
             const pcTagsSetting = (game.settings?.get('kanka-foundry', 'pcTags') as string) ?? 'pc,acolyte';
             const pcTags = pcTagsSetting.split(',').map((t: string) => t.trim()).filter(Boolean);
 
@@ -36,6 +37,7 @@ async function handleEntity(
                 campaignId,
                 defaultType,
                 pcTags,
+                gameSystem,
             );
         }
     }
@@ -123,6 +125,7 @@ export async function updateEntity(entry: JournalEntry, entityLookup?: KankaApiE
         const createActors = game.settings?.get('kanka-foundry', 'createActorsForCharacters') ?? true;
         if (createActors) {
             const defaultType = (game.settings?.get('kanka-foundry', 'defaultActorType') as string) ?? 'npc';
+            const gameSystem = (game.settings?.get('kanka-foundry', 'defaultGameSystem') as string) ?? 'dh2';
             const pcTagsSetting = (game.settings?.get('kanka-foundry', 'pcTags') as string) ?? 'pc,acolyte';
             const pcTags = pcTagsSetting.split(',').map((t: string) => t.trim()).filter(Boolean);
             const entityTags = resolveEntityTags(entity, entityLookup);
@@ -133,6 +136,7 @@ export async function updateEntity(entry: JournalEntry, entityLookup?: KankaApiE
                 campaignId,
                 defaultType,
                 pcTags,
+                gameSystem,
             );
         }
     }

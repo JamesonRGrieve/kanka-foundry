@@ -258,6 +258,9 @@ KANKA:
             values:
                 npc: NPC
                 character: Player Character
+        defaultGameSystem:
+            label: Default Game System
+            hint: Which wh40k-rpg game system to use when composing actor types (e.g. dh2-npc). Pick the rules line your campaign uses.
         pcTags:
             label: PC tag names
             hint: Comma-separated Kanka tag names that mark a character as a Player Character Actor type.

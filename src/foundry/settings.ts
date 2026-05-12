@@ -226,6 +226,31 @@ export function registerSettings(): void {
         },
     );
 
+    // wh40k-rpg ships 7 d100 game systems (BC, DH1, DH2, DW, OW, RT, IM).
+    // Actor types are <system>-<kind>, e.g. dh2-npc / dh2-character. The
+    // setting below selects the system prefix that kanka-foundry composes
+    // onto the bare kind (defaultActorType / 'character' for PC tags).
+    game.settings?.register('kanka-foundry',
+        'defaultGameSystem',
+        {
+            name: getMessage('settings.defaultGameSystem.label'),
+            hint: getMessage('settings.defaultGameSystem.hint'),
+            scope: 'world',
+            config: true,
+            type: String,
+            default: 'dh2',
+            choices: {
+                bc: 'Black Crusade (bc)',
+                dh1: 'Dark Heresy 1e (dh1)',
+                dh2: 'Dark Heresy 2e (dh2)',
+                dw: 'Deathwatch (dw)',
+                ow: 'Only War (ow)',
+                rt: 'Rogue Trader (rt)',
+                im: 'Imperium Maledictum (im)',
+            },
+        },
+    );
+
     game.settings?.register('kanka-foundry',
         'pcTags',
         {
