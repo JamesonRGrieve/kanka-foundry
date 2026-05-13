@@ -1,5 +1,5 @@
-import type { KankaApiEntity, KankaApiId, KankaApiJournal, KankaApiModuleType } from '../../types/kanka';
 import api from '..';
+import type { KankaApiEntity, KankaApiId, KankaApiJournal, KankaApiModuleType } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 
@@ -8,17 +8,14 @@ export default class JournalTypeLoader extends AbstractTypeLoader<KankaApiJourna
         return 'journal';
     }
 
-    public async createReferenceCollection(
+    public override async createReferenceCollection(
         campaignId: KankaApiId,
         entity: KankaApiJournal,
         lookup: KankaApiEntity[] = [],
     ): Promise<ReferenceCollection> {
         const collection = await super.createReferenceCollection(campaignId, entity, lookup);
 
-        await Promise.all([
-            collection.addById(entity.location_id, 'location'),
-            collection.addById(entity.author_id, 'character'),
-        ]);
+        await Promise.all([collection.addById(entity.location_id, 'location'), collection.addById(entity.author_id, 'character')]);
 
         return collection;
     }

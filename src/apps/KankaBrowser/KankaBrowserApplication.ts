@@ -1,5 +1,8 @@
 import api from '../../api';
 import NotAuthenticatedError from '../../api/NotAuthenticatedError';
+
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 import { findEntryByEntityId, hasOutdatedEntryByEntity } from '../../foundry/journalEntries';
 import { showError } from '../../foundry/notifications';
 import type { KankaSettings } from '../../foundry/settings';
@@ -59,31 +62,32 @@ const entityTypes: Partial<Record<EntityType, { icon: string }>> = {
     },
 };
 
-type RenderContext = ApplicationV2.RenderContext & Partial<{
-    isLoading: boolean,
-    allCampaigns: Record<string, string>,
-    campaign: KankaApiCampaign | null,
-    entities: KankaApiEntity[] | null,
-    showPrivate: KankaSettings['importPrivateEntities'],
-    view: KankaSettings['browserView'],
-    listPartial: string,
-    gridPartial: string,
-    type: string,
-    icon: string,
-    isOpen: boolean,
-    count: number,
-    countLinked: number,
-}>;
+type RenderContext = ApplicationV2.RenderContext &
+    Partial<{
+        isLoading: boolean;
+        allCampaigns: Record<string, string>;
+        campaign: KankaApiCampaign | null;
+        entities: KankaApiEntity[] | null;
+        showPrivate: KankaSettings['importPrivateEntities'];
+        view: KankaSettings['browserView'];
+        listPartial: string;
+        gridPartial: string;
+        type: string;
+        icon: string;
+        isOpen: boolean;
+        count: number;
+        countLinked: number;
+    }>;
 
 export default class KankaBrowserApplication extends HandlebarsApplicationMixin(ApplicationV2<RenderContext>) {
     #search = '';
     #entities: KankaApiEntity[] | null = null;
     #allCampaigns: KankaApiCampaign[] | null = null;
     #campaign: KankaApiCampaign | null = null;
-    #hooks: Partial<Record<Hooks.HookName, number>> = {};
+    readonly #hooks: Partial<Record<Hooks.HookName, number>> = {};
     #isLoading = false;
 
-    static DEFAULT_OPTIONS: DeepPartial<ApplicationV2.Configuration> = {
+    static override DEFAULT_OPTIONS: DeepPartial<ApplicationV2.Configuration> = {
         id: 'kanka-browser',
         classes: ['kanka-browser'],
         window: {
@@ -124,7 +128,7 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         },
     };
 
-    static PARTS: Record<string, HandlebarsApplicationMixin.HandlebarsTemplatePart> = {
+    static override PARTS: Record<string, HandlebarsApplicationMixin.HandlebarsTemplatePart> = {
         loading: {
             template: loadingTemplate,
         },
@@ -134,7 +138,7 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         search: {
             template: searchTemplate,
         },
-        ...Object.keys(entityTypes).reduce((acc, type) => {
+        ...Object.keys(entityTypes).reduce<Record<string, HandlebarsApplicationMixin.HandlebarsTemplatePart>>((acc, type) => {
             acc[type] = {
                 template: entitiesTemplate,
                 templates: [entitiesTemplate, entityListPartial, entityGridPartial],
@@ -162,13 +166,13 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         try {
             if (!this.#campaign) return;
 
-            const type = target.closest<HTMLElement>('[data-application-part]')?.dataset.applicationPart;
-            const rawId = target.closest<HTMLElement>('[data-entity-id]')?.dataset.entityId;
+            const type = target.closest<HTMLElement>('[data-application-part]')?.dataset['applicationPart'];
+            const rawId = target.closest<HTMLElement>('[data-entity-id]')?.dataset['entityId'];
             const id = rawId ? Number.parseInt(rawId, 10) : null;
             let url = this.#campaign.urls.view;
 
             if (id) {
-                const entity = this.#entities?.find(e => e.type === type && e.id === id);
+                const entity = this.#entities?.find((e) => e.type === type && e.id === id);
                 url = entity?.urls.view ?? url;
             } else if (type && type in entityTypes) {
                 url = `${url}/${type.replace(/y$/, 'ie')}s`;
@@ -187,9 +191,9 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         }
     }
 
-    static async openInFoundry(this: KankaBrowserApplication, _event, target) {
+    static async openInFoundry(this: KankaBrowserApplication, _event: PointerEvent, target: HTMLElement) {
         try {
-            const rawId = target.closest('[data-entity-id]').dataset.entityId;
+            const rawId = target.closest<HTMLElement>('[data-entity-id]')?.dataset['entityId'];
             const id = rawId ? Number.parseInt(rawId, 10) : null;
 
             if (!id) return;
@@ -205,16 +209,18 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         }
     }
 
-    static async updateSingle(this: KankaBrowserApplication, _event, target) {
+    static async updateSingle(this: KankaBrowserApplication, _event: PointerEvent, target: HTMLElement) {
         try {
             if (!this.#campaign || !this.#entities) return;
 
-            const rawId = target.closest('[data-entity-id]').dataset.entityId;
+            const rawId = target.closest<HTMLElement>('[data-entity-id]')?.dataset['entityId'];
             const id = rawId ? Number.parseInt(rawId, 10) : null;
 
             if (!id) return;
 
-            this.setLoadingState(target);
+            const btn: unknown = target;
+            assertType<HTMLButtonElement>(btn);
+            this.setLoadingState(btn);
 
             const entry = findEntryByEntityId(id);
             if (entry) {
@@ -233,17 +239,24 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         }
     }
 
-    static async linkAll(this: KankaBrowserApplication, _event, target) {
+    static async linkAll(this: KankaBrowserApplication, _event: PointerEvent, target: HTMLElement) {
         try {
             if (!this.#campaign || !this.#entities) return;
 
-            let type = target.closest('[data-application-part]').dataset.applicationPart;
-            if (!(type in entityTypes)) type = undefined;
+            const typeRaw = target.closest<HTMLElement>('[data-application-part]')?.dataset['applicationPart'];
+            let type: EntityType | undefined;
+            if (typeRaw !== undefined) {
+                assertType<EntityType>(typeRaw);
+                type = typeRaw;
+            }
+            if (!type || !(type in entityTypes)) type = undefined;
 
             const unlinkedEntities = this.getEntities(type).filter((entity) => !findEntryByEntityId(entity.id));
             const grouped = groupBy(unlinkedEntities, 'module.code');
 
-            this.setLoadingState(target);
+            const btn: unknown = target;
+            assertType<HTMLButtonElement>(btn);
+            this.setLoadingState(btn);
 
             for (const [syncType, entities] of grouped) {
                 try {
@@ -266,20 +279,27 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         }
     }
 
-    static async updateOutdated(this: KankaBrowserApplication, _event, target) {
+    static async updateOutdated(this: KankaBrowserApplication, _event: PointerEvent, target: HTMLElement) {
         try {
             if (!this.#campaign || !this.#entities) return;
 
-            let type = target.closest('[data-application-part]').dataset.applicationPart;
-            if (!(type in entityTypes)) type = undefined;
+            const typeRaw = target.closest<HTMLElement>('[data-application-part]')?.dataset['applicationPart'];
+            let type: EntityType | undefined;
+            if (typeRaw !== undefined) {
+                assertType<EntityType>(typeRaw);
+                type = typeRaw;
+            }
+            if (!type || !(type in entityTypes)) type = undefined;
 
             const outdatedEntries = this.getEntities(type)
                 .filter((entity) => hasOutdatedEntryByEntity(entity))
                 .map((entity) => findEntryByEntityId(entity.id))
                 .filter((entry): entry is JournalEntry => !!entry);
 
-            this.setLoadingState(target);
-            await Promise.all(outdatedEntries.map((entry) => updateEntity(entry, this.#entities ?? [])));
+            const btn: unknown = target;
+            assertType<HTMLButtonElement>(btn);
+            this.setLoadingState(btn);
+            await Promise.all(outdatedEntries.map(async (entry) => updateEntity(entry, this.#entities ?? [])));
         } catch (error) {
             logError(error);
             showError('browser.error.actionError');
@@ -292,18 +312,19 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         if (!this.#entities) return [];
 
         return this.#entities
-            .filter(e => e.name.toLowerCase().includes(this.#search.toLowerCase()) && (!type || e.module.code === type))
-            .map(entity => {
+            .filter((e) => e.name.toLowerCase().includes(this.#search.toLowerCase()) && (!type || e.module.code === type))
+            .map((entity) => {
                 const isOutdated = hasOutdatedEntryByEntity(entity);
                 return {
                     ...entity,
                     state: {
                         isOutdated,
                         isPrivate: entity.is_private && !isOutdated,
-                        isLinked: Boolean(findEntryByEntityId(entity.id))
+                        isLinked: Boolean(findEntryByEntityId(entity.id)),
                     },
                 };
-            }).toSorted((a, b) => a.name.localeCompare(b.name));
+            })
+            .toSorted((a, b) => a.name.localeCompare(b.name));
     }
 
     protected setLoadingState(button: HTMLButtonElement): void {
@@ -330,7 +351,7 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
             'event',
         ]);
 
-        return entities?.filter(entity => {
+        return entities?.filter((entity) => {
             if (!game.settings?.get('kanka-foundry', 'importTemplateEntities') && entity.is_template) {
                 return false;
             }
@@ -346,10 +367,7 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
     protected async loadDataForCampaign(campaignId?: number) {
         if (!campaignId) return { campaign: null, entities: null };
 
-        const [campaign, entities] = await Promise.all([
-            api.getCampaign(campaignId),
-            this.loadEntities(campaignId),
-        ]);
+        const [campaign, entities] = await Promise.all([api.getCampaign(campaignId), this.loadEntities(campaignId)]);
 
         return { campaign, entities };
     }
@@ -365,70 +383,90 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         this.#entities = null;
         this.#isLoading = true;
 
-        Promise.all([api.getAllCampaigns(), this.loadDataForCampaign(campaignId)]).then(([allCampaigns, { campaign, entities }]) => {
-            this.#allCampaigns = allCampaigns;
-            this.#campaign = campaign;
-            this.#entities = entities;
-            this.#isLoading = false;
-            this.render({ force: true });
-        }).catch(error => {
-            this.#isLoading = false;
-            logError(error);
-            if (error instanceof NotAuthenticatedError) {
-                showError('settings.error.ErrorInvalidAccessToken');
-            } else {
-                showError('browser.error.loadEntity');
-            }
-            this.close();
-        });
+        Promise.all([api.getAllCampaigns(), this.loadDataForCampaign(campaignId)])
+            .then(([allCampaigns, { campaign, entities }]) => {
+                this.#allCampaigns = allCampaigns;
+                this.#campaign = campaign;
+                this.#entities = entities;
+                this.#isLoading = false;
+                this.render({ force: true });
+            })
+            .catch((error: unknown) => {
+                this.#isLoading = false;
+                logError(error);
+                if (error instanceof NotAuthenticatedError) {
+                    showError('settings.error.ErrorInvalidAccessToken');
+                } else {
+                    showError('browser.error.loadEntity');
+                }
+                this.close();
+            });
     }
 
-    async _preFirstRender(this: KankaBrowserApplication, context, options): Promise<void> {
-        this.#hooks.deleteJournalEntry = Hooks.on('deleteJournalEntry', (_entry: JournalEntry) => this.render());
+    override async _preFirstRender(
+        this: KankaBrowserApplication,
+        context: DeepPartial<ApplicationV2.RenderContext>,
+        options: DeepPartial<ApplicationV2.RenderOptions>,
+    ): Promise<void> {
+        this.#hooks.deleteJournalEntry = Hooks.on('deleteJournalEntry', async (_entry: JournalEntry) => this.render());
         await super._preFirstRender(context, options);
         this.setupData();
     }
 
-    async _preClose() {
-        for (const [hook, id] of Object.entries(this.#hooks) as [Hooks.HookName, number][]) {
-            Hooks.off(hook, id);
+    override async _preClose() {
+        for (const [hookRaw, id] of Object.entries(this.#hooks)) {
+            if (id !== undefined) {
+                assertType<Hooks.HookName>(hookRaw);
+                Hooks.off(hookRaw, id);
+            }
         }
     }
 
-    async _prepareContext() {
+    override async _prepareContext() {
         return {
             isLoading: this.#isLoading,
-            allCampaigns: (this.#allCampaigns ?? []).reduce((choices, { id, name }) => { choices[String(id)] = name; return choices; }, {
-                0: '-- Please choose --',
-            }),
+            allCampaigns: (this.#allCampaigns ?? []).reduce<Record<string, string>>(
+                (choices, { id, name }) => {
+                    choices[String(id)] = name;
+                    return choices;
+                },
+                {
+                    0: '-- Please choose --',
+                },
+            ),
             campaign: this.#campaign,
             entities: [],
-            showPrivate: game.settings?.get('kanka-foundry', 'importPrivateEntities'),
-            view: game.settings?.get('kanka-foundry', 'browserView'),
+            showPrivate: game.settings?.get('kanka-foundry', 'importPrivateEntities') ?? false,
+            view: game.settings?.get('kanka-foundry', 'browserView') ?? 'list',
             listPartial: entityListPartial,
             gridPartial: entityGridPartial,
         };
     }
 
-    async _preparePartContext(partId, context) {
+    override async _preparePartContext(
+        partId: string,
+        context: foundry.applications.api.ApplicationV2.RenderContextOf<this>,
+        _options: DeepPartial<foundry.applications.api.HandlebarsApplicationMixin.RenderOptions>,
+    ): Promise<foundry.applications.api.ApplicationV2.RenderContextOf<this>> {
         if (partId in entityTypes) {
-            const entities = this.getEntities(partId as EntityType);
+            assertType<EntityType>(partId);
+            const entities = this.getEntities(partId);
 
             return {
                 ...context,
                 type: partId,
                 icon: entityTypes[partId]?.icon,
-                isOpen: !!this.#search || game.settings?.get('kanka-foundry', `collapseType_${partId as EntityType}`),
+                isOpen: !!this.#search || game.settings?.get('kanka-foundry', `collapseType_${partId}`),
                 entities: entities,
                 count: entities.length,
-                countLinked: entities.filter(e => !!findEntryByEntityId(e.id)).length,
-            }
+                countLinked: entities.filter((e) => !!findEntryByEntityId(e.id)).length,
+            };
         }
 
         return context;
     }
 
-    protected _attachPartListeners(partId: string, htmlElement: HTMLElement) {
+    protected override _attachPartListeners(partId: string, htmlElement: HTMLElement) {
         if (partId === 'search') {
             const searchInput = htmlElement.querySelector<HTMLInputElement>('#knk-entity-search');
             searchInput?.addEventListener(
@@ -441,48 +479,54 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         }
 
         if (partId === 'campaign') {
-            htmlElement.querySelector<HTMLSelectElement>('#knk-campaign-select')?.addEventListener(
-                'change',
-                async (event) => {
-                    const target = event.currentTarget as HTMLSelectElement | null;
-                    if (!target) return;
-
-                    const campaignId = target.value === '0' ? '' : target.value;
-                    await game.settings?.set('kanka-foundry', 'campaign', campaignId);
-                    this.setupData();
-                    this.render();
-                },
-            );
+            htmlElement.querySelector<HTMLSelectElement>('#knk-campaign-select')?.addEventListener('change', async (event) => {
+                const targetRaw: unknown = event.currentTarget;
+                if (targetRaw === null || typeof targetRaw !== 'object' || !('value' in targetRaw)) return;
+                assertType<HTMLSelectElement>(targetRaw);
+                const campaignId = targetRaw.value === '0' ? '' : targetRaw.value;
+                await game.settings?.set('kanka-foundry', 'campaign', campaignId);
+                this.setupData();
+                this.render();
+            });
         }
 
         if (partId in entityTypes) {
-            const details = htmlElement as HTMLDetailsElement;
-            details.addEventListener('toggle', async event => {
-                const target = event.currentTarget as HTMLDetailsElement | null;
-                if (!target) return;
-
-                const type = target.dataset.applicationPart as EntityType;
+            assertType<EntityType>(partId);
+            const detailsRaw: unknown = htmlElement;
+            assertType<HTMLDetailsElement>(detailsRaw);
+            detailsRaw.addEventListener('toggle', async (event) => {
+                const targetRaw2: unknown = event.currentTarget;
+                if (targetRaw2 === null || typeof targetRaw2 !== 'object' || !('dataset' in targetRaw2)) return;
+                assertType<HTMLDetailsElement>(targetRaw2);
+                const typeRaw2 = targetRaw2.dataset['applicationPart'];
+                if (typeRaw2 === undefined) return;
+                assertType<EntityType>(typeRaw2);
+                const type: EntityType = typeRaw2;
                 if (!(type in entityTypes) || this.#search) return;
-                await game.settings?.set('kanka-foundry', `collapseType_${type}`, target.open);
+                await game.settings?.set('kanka-foundry', `collapseType_${type}`, targetRaw2.open);
             });
         }
     }
 }
 
 if (import.meta.hot) {
-    import.meta.hot.accept(newModule => {
-        if (newModule) {
-            const KankaBrowserApplication = newModule.default;
-            const browserApplication = new KankaBrowserApplication();
-            browserApplication.render({ force: true });
-        }
+    import.meta.hot.accept((newModuleRaw) => {
+        const newModule: unknown = newModuleRaw;
+        if (newModule === null || typeof newModule !== 'object') return;
+        const defaultExport: unknown = Reflect.get(newModule, 'default');
+        if (typeof defaultExport !== 'function') return;
+        assertType<new () => { render(opts: { force: boolean }): void }>(defaultExport);
+        const browserApplication = new defaultExport();
+        browserApplication.render({ force: true });
     });
 
-    import.meta.hot.dispose(() => {
-        const uiRecord = ui as unknown as Record<string, unknown>;
-        if (uiRecord.activeWindow instanceof KankaBrowserApplication) {
-            if (import.meta.hot) import.meta.hot.data.position = uiRecord.activeWindow.position;
-            uiRecord.activeWindow.close();
+    import.meta.hot.dispose((data: Record<string, unknown>) => {
+        const uiRaw: unknown = ui;
+        if (uiRaw === null || typeof uiRaw !== 'object') return;
+        const activeWindow: unknown = Reflect.get(uiRaw, 'activeWindow');
+        if (activeWindow instanceof KankaBrowserApplication) {
+            data['position'] = activeWindow.position;
+            activeWindow.close();
         }
     });
 }

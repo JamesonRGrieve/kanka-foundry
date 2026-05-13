@@ -45,7 +45,7 @@ export default defineConfig({
     ],
     test: {
         clearMocks: true,
-        setupFiles: ['./src/setupTests.ts'],
+        setupFiles: [resolve(__dirname, 'src/setupTests.ts')],
         root: resolve(__dirname, 'src'),
         globals: true,
         coverage: {

@@ -8,20 +8,23 @@ import { logError } from '../../util/logger';
 import './KankaJournalApplication.scss';
 
 import JournalEntrySheet = foundry.applications.sheets.journal.JournalEntrySheet;
+function assertType<T>(_value: unknown): asserts _value is T {}
 
-const overviewTypes = new Set([
-    'kanka-foundry.overview',
-    'kanka-foundry.post',
-    'kanka-foundry.character-profile',
-]);
+const overviewTypes = new Set(['kanka-foundry.overview', 'kanka-foundry.post', 'kanka-foundry.character-profile']);
 
 // Cast helper for accessing runtime properties not yet typed in fvtt-types stubs
 function ext(instance: KankaJournalApplication): JournalEntrySheetExt {
-    return instance as unknown as JournalEntrySheetExt;
+    const raw: unknown = instance;
+    assertType<JournalEntrySheetExt>(raw);
+    return raw;
 }
 
 // Get the parent prototype for calling super methods that aren't typed in the stubs
-const parentProto = JournalEntrySheet.prototype as unknown as JournalEntrySheetExt;
+const parentProto: JournalEntrySheetExt = (() => {
+    const cls: unknown = JournalEntrySheet;
+    assertType<{ prototype: JournalEntrySheetExt }>(cls);
+    return cls.prototype;
+})();
 
 export default class KankaJournalApplication extends JournalEntrySheet {
     static override DEFAULT_OPTIONS = {
@@ -35,11 +38,11 @@ export default class KankaJournalApplication extends JournalEntrySheet {
         },
     };
 
-    get isEditable(): false {
+    override get isEditable(): false {
         return false;
     }
 
-    _getHeaderControls(): foundry.applications.api.ApplicationV2.HeaderControlsEntry[] {
+    override _getHeaderControls(): foundry.applications.api.ApplicationV2.HeaderControlsEntry[] {
         const controls = parentProto._getHeaderControls.call(this);
 
         const accessToken = api.getToken();
@@ -63,10 +66,13 @@ export default class KankaJournalApplication extends JournalEntrySheet {
     }
 
     static #openInKanka(this: KankaJournalApplication) {
-        const snapshot = ext(this).document.getFlag('kanka-foundry', 'snapshot') as
-            | { urls: { view: string } }
-            | undefined;
-        if (snapshot?.urls.view) {
+        const snapshotRaw: unknown = ext(this).document.getFlag('kanka-foundry', 'snapshot');
+        let snapshot: { urls?: { view?: string } } | undefined;
+        if (snapshotRaw !== null && typeof snapshotRaw === 'object') {
+            assertType<{ urls?: { view?: string } }>(snapshotRaw);
+            snapshot = snapshotRaw;
+        }
+        if (snapshot?.urls?.view) {
             window.open(snapshot.urls.view, '_blank');
         } else {
             showError('error.missingUrl');
@@ -170,8 +176,8 @@ export default class KankaJournalApplication extends JournalEntrySheet {
 
         const e = ext(this);
         if (e.isMultiple || !e.rendered) return;
-
-        const element = (this as unknown as { element: HTMLElement }).element;
+        assertType<{ element: HTMLElement }>(this);
+        const element = this.element;
         const previous = element?.querySelector<HTMLButtonElement>('[data-action="previousPage"]');
         const next = element?.querySelector<HTMLButtonElement>('[data-action="nextPage"]');
         if (!next || !previous) return;
@@ -191,11 +197,12 @@ export default class KankaJournalApplication extends JournalEntrySheet {
 
         // Navigating within the overview area: just scroll, don't re-render
         if (inOverview && currentInOverview) {
-            const page = (this as unknown as { element: HTMLElement }).element?.querySelector(
-                `.journal-entry-page[data-page-id="${pageId}"]`,
-            );
+            assertType<{ element: HTMLElement }>(this);
+            const page = this.element?.querySelector(`.journal-entry-page[data-page-id="${pageId}"]`);
             if (options?.anchor) {
-                const sheet = e.getPageSheet(pageId) as unknown as { toc?: Record<string, { element?: HTMLElement }> };
+                const sheetRaw: unknown = e.getPageSheet(pageId);
+                assertType<{ toc?: Record<string, { element?: HTMLElement }> }>(sheetRaw);
+                const sheet = sheetRaw;
                 const heading = sheet?.toc?.[options.anchor]?.element;
                 if (heading) {
                     heading.scrollIntoView();
@@ -227,7 +234,9 @@ export default class KankaJournalApplication extends JournalEntrySheet {
             page.editable = false;
 
             // Add Kanka-specific TOC classes
-            const system = actualPage.system as { totalCount?: number; publicCount?: number; type?: string };
+            const systemRaw: unknown = actualPage.system;
+            assertType<{ totalCount?: number; publicCount?: number; type?: string }>(systemRaw);
+            const system = systemRaw;
             const count = actualPage.isOwner ? system.totalCount : system.publicCount;
             if (count != null) {
                 const countClass = count > 99 ? 'kanka-count kanka-count-limit' : `kanka-count kanka-count-${count}`;
@@ -241,8 +250,9 @@ export default class KankaJournalApplication extends JournalEntrySheet {
         return pages;
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: fvtt-types stubs are incomplete
-    _configureRenderParts(options: any): Record<string, foundry.applications.api.HandlebarsApplicationMixin.HandlebarsTemplatePart> {
+    override _configureRenderParts(
+        options: foundry.applications.api.HandlebarsApplicationMixin.RenderOptions,
+    ): Record<string, foundry.applications.api.HandlebarsApplicationMixin.HandlebarsTemplatePart> {
         const parts = parentProto._configureRenderParts.call(this, options);
 
         const e = ext(this);
@@ -259,32 +269,27 @@ export default class KankaJournalApplication extends JournalEntrySheet {
         return parts;
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: fvtt-types stubs are incomplete
-    async _preparePagesContext(context: any, options: any): Promise<void> {
+    async _preparePagesContext(context: Record<string, unknown>, options: Record<string, unknown>): Promise<void> {
         const e = ext(this);
         // In SINGLE mode with overview merging, show all overview pages
         if (!e.isMultiple && this.#isPageInOverviewArea(e.pageId)) {
             const overviewIds = this.#getOverviewPageIds();
-            context.pages = overviewIds.map((id) => e._pages[id]);
+            context['pages'] = overviewIds.map((id) => e._pages[id]);
         } else {
             await parentProto._preparePagesContext.call(this, context, options);
         }
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: fvtt-types stubs are incomplete
-    async _onRender(context: any, options: any): Promise<void> {
-        await (parentProto as unknown as { _onRender(c: unknown, o: unknown): Promise<void> })._onRender.call(
-            this,
-            context,
-            options,
-        );
+    override async _onRender(context: Record<string, unknown>, options: Record<string, unknown>): Promise<void> {
+        await parentProto._onRender.call(this, context, options);
 
         // Foundry's _renderPageViews (called by parent _onRender) sets element.hidden
         // based on the TOC search filter. When in overview mode, all overview pages must
         // remain visible regardless of the search filter state.
         const e = ext(this);
         if (!e.isMultiple && this.#isPageInOverviewArea(e.pageId)) {
-            const element = (this as unknown as { element: HTMLElement }).element;
+            assertType<{ element: HTMLElement }>(this);
+            const element = this.element;
             for (const id of this.#getOverviewPageIds()) {
                 const el = element?.querySelector<HTMLElement>(`.journal-entry-page[data-page-id="${id}"]`);
                 if (el) el.hidden = false;
@@ -292,20 +297,11 @@ export default class KankaJournalApplication extends JournalEntrySheet {
         }
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: fvtt-types stubs are incomplete
-    _replaceHTML(result: any, content: any, options: any): void {
+    override _replaceHTML(result: unknown, content: unknown, options: unknown): void {
         // Call parent _replaceHTML (handles standard part replacement + page appending)
-        (parentProto as unknown as { _replaceHTML(r: unknown, c: unknown, o: unknown): void })._replaceHTML.call(
-            this,
-            result,
-            content,
-            options,
-        );
-
-        // Clean up stale page elements in the container.
-        // When switching between overview and non-overview pages, the parent's
-        // _replaceHTML may leave old page elements from the previous render mode.
-        const element = (this as unknown as { element: HTMLElement }).element;
+        parentProto._replaceHTML.call(this, result, content, options);
+        assertType<{ element: HTMLElement }>(this);
+        const element = this.element;
         const container = element?.querySelector('.journal-entry-pages');
         if (!container) return;
 
@@ -313,8 +309,8 @@ export default class KankaJournalApplication extends JournalEntrySheet {
         const inOverview = !e.isMultiple && this.#isPageInOverviewArea(e.pageId);
         const allowedIds = inOverview ? new Set(this.#getOverviewPageIds()) : new Set([e.pageId]);
 
-        for (const el of Array.from(container.querySelectorAll('.journal-entry-page'))) {
-            const pageId = (el as HTMLElement).dataset.pageId;
+        for (const el of Array.from(container.querySelectorAll<HTMLElement>('.journal-entry-page'))) {
+            const pageId = el.dataset['pageId'];
             if (pageId && !allowedIds.has(pageId)) {
                 el.remove();
             }

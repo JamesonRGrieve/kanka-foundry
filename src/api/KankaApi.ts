@@ -29,7 +29,7 @@ import type RateLimiter from './RateLimiter';
 export default class KankaApi {
     static defaultURL = 'https://api.kanka.io/1.0';
 
-    #fetcher: KankaFetcher;
+    readonly #fetcher: KankaFetcher;
 
     public constructor() {
         this.#fetcher = new KankaFetcher(KankaApi.defaultURL);
@@ -74,11 +74,15 @@ export default class KankaApi {
         return result.data;
     }
 
+    public async updateCampaign(id: number, data: Record<string, unknown>): Promise<KankaApiCampaign> {
+        type Result = KankaApiResult<KankaApiCampaign>;
+        const result = await this.#fetcher.patch<Result>(`campaigns/${String(id)}`, data);
+        return result.data;
+    }
+
     public async getCharacter(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiCharacter> {
         type Result = KankaApiResult<KankaApiCharacter>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/characters/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/characters/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -88,9 +92,7 @@ export default class KankaApi {
 
     public async getCreature(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiCreature> {
         type Result = KankaApiResult<KankaApiCreature>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/creatures/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/creatures/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -100,9 +102,7 @@ export default class KankaApi {
 
     public async getAbility(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiAbility> {
         type Result = KankaApiResult<KankaApiAbility>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/abilities/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/abilities/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -112,9 +112,7 @@ export default class KankaApi {
 
     public async getFamily(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiFamily> {
         type Result = KankaApiResult<KankaApiFamily>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/families/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/families/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -124,9 +122,7 @@ export default class KankaApi {
 
     public async getItem(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiItem> {
         type Result = KankaApiResult<KankaApiItem>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/items/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/items/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -136,9 +132,7 @@ export default class KankaApi {
 
     public async getJournal(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiJournal> {
         type Result = KankaApiResult<KankaApiJournal>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/journals/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/journals/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -148,9 +142,7 @@ export default class KankaApi {
 
     public async getLocation(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiLocation> {
         type Result = KankaApiResult<KankaApiLocation>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/locations/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/locations/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -160,9 +152,7 @@ export default class KankaApi {
 
     public async getNote(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiNote> {
         type Result = KankaApiResult<KankaApiNote>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/notes/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/notes/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -172,9 +162,7 @@ export default class KankaApi {
 
     public async getOrganisation(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiOrganisation> {
         type Result = KankaApiResult<KankaApiOrganisation>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/organisations/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/organisations/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -184,9 +172,7 @@ export default class KankaApi {
 
     public async getQuest(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiQuest> {
         type Result = KankaApiResult<KankaApiQuest>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/quests/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/quests/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -196,9 +182,7 @@ export default class KankaApi {
 
     public async getRace(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiRace> {
         type Result = KankaApiResult<KankaApiRace>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/races/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/races/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -208,9 +192,7 @@ export default class KankaApi {
 
     public async getEvent(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiEvent> {
         type Result = KankaApiResult<KankaApiEvent>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/events/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/events/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -220,58 +202,33 @@ export default class KankaApi {
 
     public async getEntity(campaignId: KankaApiId, id: KankaApiEntityId): Promise<KankaApiEntity> {
         type Result = KankaApiResult<KankaApiEntity>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/entities/${String(id)}?image=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/entities/${String(id)}?image=1`);
         return result.data;
     }
 
-    public async getAllEntities(
-        campaignId: KankaApiId,
-        types: KankaApiEntity['module']['code'][] = [],
-    ): Promise<KankaApiEntity[]> {
-        return this.fetchFullList<KankaApiEntity>(
-            `campaigns/${Number(campaignId)}/entities?image=1&types=${types.join(',')}`,
-        );
+    public async getAllEntities(campaignId: KankaApiId, types: KankaApiEntity['module']['code'][] = []): Promise<KankaApiEntity[]> {
+        return this.fetchFullList<KankaApiEntity>(`campaigns/${Number(campaignId)}/entities?image=1&types=${types.join(',')}`);
     }
 
     // Write methods
 
-    public async updateCharacter(
-        campaignId: KankaApiId,
-        id: KankaApiId,
-        data: Record<string, unknown>,
-    ): Promise<KankaApiCharacter> {
+    public async updateCharacter(campaignId: KankaApiId, id: KankaApiId, data: Record<string, unknown>): Promise<KankaApiCharacter> {
         type Result = KankaApiResult<KankaApiCharacter>;
-        const result = await this.#fetcher.patch<Result>(
-            `campaigns/${String(campaignId)}/characters/${String(id)}`,
-            data,
-        );
+        const result = await this.#fetcher.patch<Result>(`campaigns/${String(campaignId)}/characters/${String(id)}`, data);
         return result.data;
     }
 
-    public async createCharacter(
-        campaignId: KankaApiId,
-        data: Record<string, unknown>,
-    ): Promise<KankaApiCharacter> {
+    public async createCharacter(campaignId: KankaApiId, data: Record<string, unknown>): Promise<KankaApiCharacter> {
         type Result = KankaApiResult<KankaApiCharacter>;
-        const result = await this.#fetcher.post<Result>(
-            `campaigns/${String(campaignId)}/characters`,
-            data,
-        );
+        const result = await this.#fetcher.post<Result>(`campaigns/${String(campaignId)}/characters`, data);
         return result.data;
     }
 
     // Entity attribute methods
 
-    public async getEntityAttributes(
-        campaignId: KankaApiId,
-        entityId: KankaApiEntityId,
-    ): Promise<KankaApiAttribute[]> {
+    public async getEntityAttributes(campaignId: KankaApiId, entityId: KankaApiEntityId): Promise<KankaApiAttribute[]> {
         type Result = KankaApiResult<KankaApiAttribute[]>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes`);
         return result.data;
     }
 
@@ -281,22 +238,14 @@ export default class KankaApi {
         data: { name: string; value: string; type_id?: number },
     ): Promise<KankaApiAttribute> {
         type Result = KankaApiResult<KankaApiAttribute>;
-        const result = await this.#fetcher.post<Result>(
-            `campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes`,
-            data,
-        );
+        const result = await this.#fetcher.post<Result>(`campaigns/${String(campaignId)}/entities/${String(entityId)}/attributes`, data);
         return result.data;
     }
 
     // Quest element methods
 
-    public async getQuestElements(
-        campaignId: KankaApiId,
-        questId: KankaApiId,
-    ): Promise<KankaApiQuestElement[]> {
-        return this.fetchFullList<KankaApiQuestElement>(
-            `campaigns/${String(campaignId)}/quests/${String(questId)}/quest_elements`,
-        );
+    public async getQuestElements(campaignId: KankaApiId, questId: KankaApiId): Promise<KankaApiQuestElement[]> {
+        return this.fetchFullList<KankaApiQuestElement>(`campaigns/${String(campaignId)}/quests/${String(questId)}/quest_elements`);
     }
 
     public async patchQuestElement(
@@ -306,10 +255,7 @@ export default class KankaApi {
         data: Partial<Pick<KankaApiQuestElement, 'colour' | 'name'>>,
     ): Promise<KankaApiQuestElement> {
         type Result = KankaApiResult<KankaApiQuestElement>;
-        const result = await this.#fetcher.patch<Result>(
-            `campaigns/${String(campaignId)}/quests/${String(questId)}/quest_elements/${String(elementId)}`,
-            data,
-        );
+        const result = await this.#fetcher.patch<Result>(`campaigns/${String(campaignId)}/quests/${String(questId)}/quest_elements/${String(elementId)}`, data);
         return result.data;
     }
 
@@ -317,9 +263,7 @@ export default class KankaApi {
 
     public async getTimeline(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiTimeline> {
         type Result = KankaApiResult<KankaApiTimeline>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/timelines/${String(id)}?related=1`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/timelines/${String(id)}?related=1`);
         return result.data;
     }
 
@@ -327,13 +271,8 @@ export default class KankaApi {
         return this.fetchFullList<KankaApiTimeline>(`campaigns/${Number(campaignId)}/timelines?related=1`);
     }
 
-    public async getTimelineElements(
-        campaignId: KankaApiId,
-        timelineId: KankaApiId,
-    ): Promise<KankaApiTimelineElement[]> {
-        return this.fetchFullList<KankaApiTimelineElement>(
-            `campaigns/${String(campaignId)}/timelines/${String(timelineId)}/timeline_elements`,
-        );
+    public async getTimelineElements(campaignId: KankaApiId, timelineId: KankaApiId): Promise<KankaApiTimelineElement[]> {
+        return this.fetchFullList<KankaApiTimelineElement>(`campaigns/${String(campaignId)}/timelines/${String(timelineId)}/timeline_elements`);
     }
 
     public async patchTimelineElement(
@@ -364,17 +303,9 @@ export default class KankaApi {
         return result.data;
     }
 
-    public async uploadEntityImage(
-        campaignId: KankaApiId,
-        entityId: KankaApiEntityId,
-        imageBlob: Blob,
-    ): Promise<void> {
+    public async uploadEntityImage(campaignId: KankaApiId, entityId: KankaApiEntityId, imageBlob: Blob): Promise<void> {
         type Result = KankaApiResult<unknown>;
-        await this.#fetcher.uploadFile<Result>(
-            `campaigns/${String(campaignId)}/entities/${String(entityId)}/image`,
-            imageBlob,
-            'file',
-        );
+        await this.#fetcher.uploadFile<Result>(`campaigns/${String(campaignId)}/entities/${String(entityId)}/image`, imageBlob, 'file');
     }
 
     public async getEntityAssets(
@@ -383,9 +314,7 @@ export default class KankaApi {
     ): Promise<Array<{ id: number; name: string; _url?: string; _file?: boolean; type_id?: number }>> {
         type Asset = { id: number; name: string; _url?: string; _file?: boolean; type_id?: number };
         type Result = KankaApiResult<Asset[]>;
-        const result = await this.#fetcher.fetch<Result>(
-            `campaigns/${String(campaignId)}/entities/${String(entityId)}/entity_assets`,
-        );
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/entities/${String(entityId)}/entity_assets`);
         return result.data;
     }
 
@@ -395,11 +324,11 @@ export default class KankaApi {
         const query = new URL(`https://${path}`).searchParams;
 
         while (url) {
-            const result = await this.#fetcher.fetch<KankaApiListResult<T>>(url);
+            const result: KankaApiListResult<T> = await this.#fetcher.fetch<KankaApiListResult<T>>(url);
             data.push(...result.data);
             if (!result.links.next) break;
 
-            const nextPage = new URL(result.links.next);
+            const nextPage: URL = new URL(result.links.next);
             for (const [key, value] of query.entries()) {
                 nextPage.searchParams.append(key, value);
             }

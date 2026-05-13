@@ -1,5 +1,5 @@
-import type { KankaApiAbility, KankaApiEntity, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import api from '..';
+import type { KankaApiAbility, KankaApiEntity, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 
@@ -8,7 +8,7 @@ export default class AbilityTypeLoader extends AbstractTypeLoader<KankaApiAbilit
         return 'ability';
     }
 
-    public async createReferenceCollection(
+    public override async createReferenceCollection(
         campaignId: KankaApiId,
         entity: KankaApiAbility,
         lookup: KankaApiEntity[] = [],

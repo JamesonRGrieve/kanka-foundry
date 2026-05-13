@@ -6,6 +6,7 @@ import { logInfo } from '../../util/logger';
 import getMessage from '../getMessage';
 import { findEntriesByType } from '../journalEntries';
 import { showError, showWarning } from '../notifications';
+function assertType<T>(_value: unknown): asserts _value is T {}
 
 const questStatus = {
     complete: '<i class="fas fa-check-circle knk:quest-status -complete"></i>',
@@ -17,9 +18,11 @@ function renderQuestStatusIcons(html: HTMLElement): void {
 
     const questEntries = findEntriesByType('quest');
     for (const entry of questEntries) {
-        const li = $(html).find(`[data-document-id="${entry.id as string}"]`);
+        const li = $(html).find(`[data-document-id="${entry.id ?? ''}"]`);
         const link = li.find('.document-name a');
-        const snapshot = entry.getFlag('kanka-foundry', 'snapshot') as KankaApiQuest;
+        const snapshotRaw: unknown = entry.getFlag('kanka-foundry', 'snapshot');
+        assertType<KankaApiQuest>(snapshotRaw);
+        const snapshot = snapshotRaw;
 
         link.html(`${snapshot.is_completed ? questStatus.complete : questStatus.open} ${snapshot.name}`);
     }
@@ -68,10 +71,7 @@ function renderKankaButton(html: HTMLElement): void {
     $(html).find('.directory-footer').append(button);
 }
 
-export default async function renderJournalDirectory(
-    _app: JournalDirectory,
-    html: HTMLElement,
-): Promise<void> {
+export default async function renderJournalDirectory(_app: JournalDirectory, html: HTMLElement): Promise<void> {
     logInfo('renderJournalDirectory');
     renderQuestStatusIcons(html);
     renderKankaButton(html);

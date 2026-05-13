@@ -1,20 +1,16 @@
-import {
-    type KankaApiSimpleConstrainable,
-    type KankaApiVisibilityConstrainable,
-    KankaVisibility,
-} from '../types/kanka';
 import type Reference from '../types/Reference';
+import { type KankaApiSimpleConstrainable, type KankaApiVisibilityConstrainable, KankaVisibility } from '../types/kanka';
 
 function hasVisibility(entity: unknown): entity is KankaApiVisibilityConstrainable {
-    return (entity as KankaApiVisibilityConstrainable)?.visibility_id !== undefined;
+    return typeof entity === 'object' && entity !== null && 'visibility_id' in entity;
 }
 
 function hasIsPrivate(entity: unknown): entity is KankaApiSimpleConstrainable {
-    return (entity as KankaApiSimpleConstrainable)?.is_private !== undefined;
+    return typeof entity === 'object' && entity !== null && 'is_private' in entity;
 }
 
 function isReference(entity: unknown): entity is Reference {
-    return (entity as Reference)?.isPrivate !== undefined;
+    return typeof entity === 'object' && entity !== null && 'isPrivate' in entity;
 }
 
 export default function isSecret(...entities: unknown[]): boolean {

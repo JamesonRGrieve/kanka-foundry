@@ -1,0 +1,28 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "entry": [
+        "src/index.ts",
+        "src/index.js",
+        "src/setupTests.ts",
+        "scripts/*.mjs",
+        "vite.config.ts"
+    ],
+    "project": [
+        "src/**/*.ts",
+        "build/**/*.ts"
+    ],
+    "ignore": [
+        "src/foundryTypes.d.ts",
+        "src/globalTypes.d.ts",
+        "dist/**"
+    ],
+    "ignoreBinaries": [
+        "biome",
+        "knip",
+        "type-coverage"
+    ],
+    "ignoreDependencies": [
+        "tailwindcss",
+        "@types/jquery"
+    ]
+}

@@ -8,10 +8,8 @@ function compile(template: string, context = {}): string {
 
 describe('kankaFilterAccessible()', () => {
     beforeAll(() => {
-        Handlebars.registerHelper(
-            'kankaFilterAccessible',
-            kankaFilterAccessible as unknown as Handlebars.HelperDelegate,
-        );
+        const helper: Handlebars.HelperDelegate = kankaFilterAccessible;
+        Handlebars.registerHelper('kankaFilterAccessible', helper);
     });
 
     afterAll(() => {

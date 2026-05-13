@@ -1,13 +1,15 @@
 import api from '../api';
 import type { KankaApiId } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
-import {
-    BIO_MAP,
-    CHARACTERISTIC_REVERSE_MAP,
-    ORIGIN_MAP,
-    ROOT_STRING_MAP,
-    STAT_REVERSE_MAP,
-} from './actorAttributeMaps';
+import { BIO_MAP, CHARACTERISTIC_REVERSE_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_REVERSE_MAP } from './actorAttributeMaps';
+function assertType<T>(_value: unknown): asserts _value is T {}
+
+function getSystemProp<T>(system: unknown, key: string): T | undefined {
+    if (system === null || typeof system !== 'object') return undefined;
+    const val: unknown = Reflect.get(system, key);
+    assertType<T>(val);
+    return val;
+}
 
 /**
  * Extract mechanical stats from a Foundry Actor and create Kanka attributes.
@@ -18,18 +20,19 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
         return;
     }
 
-    const campaignId = game.settings?.get('kanka-foundry', 'campaign') as string;
+    const campaignIdRaw: unknown = game.settings?.get('kanka-foundry', 'campaign');
+    const campaignId = typeof campaignIdRaw === 'string' ? campaignIdRaw : String(campaignIdRaw ?? '');
     if (!campaignId) {
         ui.notifications?.error('Kanka-Foundry: No campaign selected.');
         return;
     }
 
-    const numericCampaignId = Number(campaignId) as KankaApiId;
+    const numericCampaignId: KankaApiId = Number(campaignId);
 
     try {
         // Create character in Kanka
-        const system = actor.system as Record<string, unknown>;
-        const bio = system.bio as Record<string, string> | undefined;
+        const system: unknown = actor.system;
+        const bio = getSystemProp<Record<string, string>>(system, 'bio');
 
         const characterData: Record<string, unknown> = {
             name: actor.name,
@@ -41,9 +44,9 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
         };
 
         if (bio) {
-            if (bio.gender) characterData.sex = bio.gender;
-            if (bio.age) characterData.age = bio.age;
-            if (bio.notes) characterData.entry = bio.notes;
+            if (bio['gender']) characterData['sex'] = bio['gender'];
+            if (bio['age']) characterData['age'] = bio['age'];
+            if (bio['notes']) characterData['entry'] = bio['notes'];
         }
 
         const kankaCharacter = await api.createCharacter(numericCampaignId, characterData);
@@ -52,24 +55,16 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
         const createAttributeIfPresent = async (name: string, value: unknown): Promise<void> => {
             if (value === undefined || value === null || value === '') return;
 
-            await api.createEntityAttribute(
-                numericCampaignId,
-                kankaCharacter.entity_id,
-                { name, value: String(value) },
-            );
+            await api.createEntityAttribute(numericCampaignId, kankaCharacter.entity_id, { name, value: String(value) });
         };
 
         // Create attributes for mechanical stats
-        const characteristics = system.characteristics as Record<string, Record<string, unknown>> | undefined;
+        const characteristics = getSystemProp<Record<string, Record<string, unknown>>>(system, 'characteristics');
         if (characteristics) {
             for (const [foundryKey, charData] of Object.entries(characteristics)) {
                 const kankaName = CHARACTERISTIC_REVERSE_MAP[foundryKey];
-                if (kankaName && charData?.base !== undefined && Number(charData.base) > 0) {
-                    await api.createEntityAttribute(
-                        numericCampaignId,
-                        kankaCharacter.entity_id,
-                        { name: kankaName, value: String(charData.base) },
-                    );
+                if (kankaName && charData?.['base'] !== undefined && Number(charData['base']) > 0) {
+                    await api.createEntityAttribute(numericCampaignId, kankaCharacter.entity_id, { name: kankaName, value: String(charData['base']) });
                 }
             }
         }
@@ -80,18 +75,14 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
             let value: unknown = system;
             for (const part of parts) {
                 if (value && typeof value === 'object') {
-                    value = (value as Record<string, unknown>)[part];
+                    value = Reflect.get(value, part);
                 } else {
                     value = undefined;
                     break;
                 }
             }
             if (value !== undefined && Number(value) > 0) {
-                await api.createEntityAttribute(
-                    numericCampaignId,
-                    kankaCharacter.entity_id,
-                    { name: kankaName, value: String(value) },
-                );
+                await api.createEntityAttribute(numericCampaignId, kankaCharacter.entity_id, { name: kankaName, value: String(value) });
             }
         }
 
@@ -99,13 +90,14 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
             await createAttributeIfPresent(kankaName, bio?.[foundryKey]);
         }
 
-        const originPath = system.originPath as Record<string, unknown> | undefined;
+        const originPath = getSystemProp<Record<string, unknown>>(system, 'originPath');
         for (const [foundryKey, kankaName] of Object.entries(ORIGIN_MAP)) {
             await createAttributeIfPresent(kankaName, originPath?.[foundryKey]);
         }
 
         for (const [foundryKey, kankaName] of Object.entries(ROOT_STRING_MAP)) {
-            await createAttributeIfPresent(kankaName, system[foundryKey]);
+            const val: unknown = system !== null && typeof system === 'object' ? Reflect.get(system, foundryKey) : undefined;
+            await createAttributeIfPresent(kankaName, val);
         }
 
         // Set kanka-foundry flags on the Actor
@@ -134,7 +126,7 @@ export function registerActorSheetButtons(): void {
                 label: 'Push to Kanka',
                 class: 'kanka-push',
                 icon: 'fas fa-upload',
-                onclick: () => pushActorToKanka(actor),
+                onclick: async () => pushActorToKanka(actor),
             });
         } else {
             buttons.unshift({
@@ -142,10 +134,14 @@ export function registerActorSheetButtons(): void {
                 class: 'kanka-open',
                 icon: 'fas fa-external-link-alt',
                 onclick: () => {
-                    const snapshot = actor.getFlag('kanka-foundry', 'snapshot') as Record<string, unknown> | undefined;
-                    const urls = snapshot?.urls as { view?: string } | undefined;
-                    if (urls?.view) {
-                        window.open(urls.view, '_blank');
+                    const snapshotRaw: unknown = actor.getFlag('kanka-foundry', 'snapshot');
+                    if (snapshotRaw === null || typeof snapshotRaw !== 'object') return;
+                    assertType<Record<string, unknown>>(snapshotRaw);
+                    const urlsRaw: unknown = snapshotRaw['urls'];
+                    if (urlsRaw === null || typeof urlsRaw !== 'object') return;
+                    assertType<{ view?: string }>(urlsRaw);
+                    if (urlsRaw.view) {
+                        window.open(urlsRaw.view, '_blank');
                     }
                 },
             });

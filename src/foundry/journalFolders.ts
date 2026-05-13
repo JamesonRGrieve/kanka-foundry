@@ -1,6 +1,6 @@
 import moduleConfig from '../../public/module.json';
-import type { KankaApiModuleType } from '../types/kanka';
 import type Reference from '../types/Reference';
+import type { KankaApiModuleType } from '../types/kanka';
 import getMessage from './getMessage';
 
 const MAX_FOLDER_DEPTH = 3;
@@ -8,14 +8,14 @@ const MAX_FOLDER_DEPTH = 3;
 function getFolderFlag(entry: Folder | undefined, name: string): unknown {
     if (!entry) return undefined;
 
-    return entry.getFlag('kanka-foundry', name as never);
+    const flags: unknown = entry.flags;
+    if (flags === null || typeof flags !== 'object') return undefined;
+    const kankaFlags: unknown = Reflect.get(flags, 'kanka-foundry');
+    if (kankaFlags === null || typeof kankaFlags !== 'object') return undefined;
+    return Reflect.get(kankaFlags, name);
 }
 
-async function createFolder(
-    name: string,
-    parent: Folder | undefined,
-    flags: Record<string, unknown> = {},
-): Promise<Folder | undefined> {
+async function createFolder(name: string, parent: Folder | undefined, flags: Record<string, unknown> = {}): Promise<Folder | undefined> {
     const data: Record<`flags.${string}.${string}`, unknown> = {};
 
     for (const [flag, value] of Object.entries(flags)) {
@@ -30,7 +30,7 @@ async function createFolder(
     });
 }
 
-export function findFolderByFlags(flags: Record<string, unknown>): Folder | undefined {
+function findFolderByFlags(flags: Record<string, unknown>): Folder | undefined {
     const entries = Object.entries(flags);
 
     if (entries.length === 0) return undefined;
@@ -41,11 +41,7 @@ export function findFolderByFlags(flags: Record<string, unknown>): Folder | unde
     });
 }
 
-export async function ensureFolderByFlags(
-    name: string,
-    parent: Folder | undefined,
-    flags: Record<string, unknown>,
-): Promise<Folder | undefined> {
+async function ensureFolderByFlags(name: string, parent: Folder | undefined, flags: Record<string, unknown>): Promise<Folder | undefined> {
     const folder = findFolderByFlags(flags);
 
     if (folder) return folder;
@@ -53,7 +49,7 @@ export async function ensureFolderByFlags(
     return createFolder(name, parent, flags);
 }
 
-export async function ensureTypeFolder(type: KankaApiModuleType): Promise<Folder | undefined> {
+async function ensureTypeFolder(type: KankaApiModuleType): Promise<Folder | undefined> {
     return ensureFolderByFlags(`[KANKA] ${getMessage('entityType', type)}`, undefined, {
         type,
     });
@@ -65,7 +61,9 @@ export async function ensureFolderPath(type: KankaApiModuleType, path: Reference
     if (!game.settings?.get('kanka-foundry', 'keepTreeStructure')) return parent;
 
     for (let i = 0; i < Math.min(path.length, MAX_FOLDER_DEPTH - 1); i += 1) {
-        const { name, entityId } = path[i];
+        const entry = path[i];
+        if (!entry) continue;
+        const { name, entityId } = entry;
         parent = await ensureFolderByFlags(name, parent, { entityId });
     }
 

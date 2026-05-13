@@ -1,5 +1,5 @@
-import type { KankaApiChildEntity, KankaApiModuleType } from '../../types/kanka';
 import api from '..';
+import type { KankaApiChildEntity, KankaApiModuleType } from '../../types/kanka';
 import type AbstractTypeLoader from './AbstractTypeLoader';
 
 const loaderModules = import.meta.glob<true, '', { default: ConstructorOf<AbstractTypeLoader> }>('./*TypeLoader.ts', {
@@ -14,7 +14,8 @@ function createTypeLoaders(): Result {
     for (const key in loaderModules) {
         if (key.includes('Abstract')) continue; // Ignore abstract base class
 
-        const Loader: ConstructorOf<AbstractTypeLoader<KankaApiChildEntity>> = loaderModules[key].default;
+        const mod = loaderModules[key];
+        const Loader: ConstructorOf<AbstractTypeLoader<KankaApiChildEntity>> | undefined = mod?.default;
 
         if (Loader) {
             const instance: AbstractTypeLoader<KankaApiChildEntity> = new Loader(api);

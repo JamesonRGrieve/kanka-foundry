@@ -1,8 +1,7 @@
-import type { AnyConstrainable } from '../../types/kanka';
 import isSecret from '../../util/isSecret';
 
-export default function kankaIsSecret(...args: [...AnyConstrainable[], Handlebars.HelperOptions]): boolean {
-    args.pop(); // Remove options
-
-    return isSecret(...(args as AnyConstrainable[]));
+export default function kankaIsSecret(...argsWithOptions: unknown[]): boolean {
+    // The last argument is the Handlebars HelperOptions — exclude it.
+    const entities = argsWithOptions.slice(0, -1);
+    return isSecret(...entities);
 }

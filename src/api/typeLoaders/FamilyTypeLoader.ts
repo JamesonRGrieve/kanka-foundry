@@ -1,5 +1,5 @@
-import type { KankaApiEntity, KankaApiFamily, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import api from '..';
+import type { KankaApiEntity, KankaApiFamily, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 
@@ -8,7 +8,7 @@ export default class FamilyTypeLoader extends AbstractTypeLoader<KankaApiFamily>
         return 'family';
     }
 
-    public async createReferenceCollection(
+    public override async createReferenceCollection(
         campaignId: KankaApiId,
         entity: KankaApiFamily,
         lookup: KankaApiEntity[] = [],
@@ -17,7 +17,7 @@ export default class FamilyTypeLoader extends AbstractTypeLoader<KankaApiFamily>
 
         await Promise.all([
             collection.addById(entity.location_id, 'location'),
-            ...entity.members.map((member) => collection.addById(member, 'character')),
+            ...entity.members.map(async (member) => collection.addById(member, 'character')),
         ]);
 
         return collection;

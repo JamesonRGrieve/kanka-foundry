@@ -1,12 +1,17 @@
 {
-    "printWidth": 120,
-    "tabWidth": 4,
+    "semi": true,
+    "bracketSpacing": true,
+    "bracketSameLine": true,
+    "trailingComma": "all",
     "singleQuote": true,
-    "arrowParens": "avoid",
+    "quoteProps": "consistent",
+    "endOfLine": "lf",
+    "printWidth": 160,
+    "tabWidth": 4,
     "singleAttributePerLine": true,
     "overrides": [
         {
-            "files": "*.hbs",
+            "files": ["**/*.hbs"],
             "options": {
                 "singleQuote": false
             }

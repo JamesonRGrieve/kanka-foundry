@@ -1,26 +1,23 @@
 import * as Handlebars from 'handlebars';
 import { vi } from 'vitest';
 
-// @ts-expect-error This doesn't satisfy the types, but it's enough for Tests.
-globalThis.foundry = { utils: {}, applications: { ux: { TextEditor: {} } } };
+(globalThis as { foundry: unknown }).foundry = { utils: {}, applications: { ux: { TextEditor: {} } } };
 
-foundry.utils.getProperty = function getProperty(object, key) {
+foundry.utils.getProperty = function getProperty(object: object, key: PropertyKey): unknown {
     if (!key) return undefined;
-    let target = object;
+    let target: unknown = object;
     for (const p of String(key).split('.')) {
-        target = target || {};
-        if (p in target) target = target[p];
-        else return undefined;
+        if (target === null || typeof target !== 'object') return undefined;
+        target = Reflect.get(target, p);
     }
     return target;
 };
 
 globalThis.Handlebars = Handlebars;
 
-// @ts-expect-error
 // biome-ignore lint/complexity/noStaticOnlyClass: This is just for testing and can't really be done differently
-foundry.applications.ux.TextEditor.implementation = class TextEditor {
-    static enrichHTML(text): string {
+(foundry.applications.ux.TextEditor as { implementation: unknown }).implementation = class TextEditor {
+    static enrichHTML(text: string): string {
         return text;
     }
 };

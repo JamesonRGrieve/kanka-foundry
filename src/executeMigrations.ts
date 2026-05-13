@@ -1,5 +1,5 @@
-import { showError, showInfo } from "./foundry/notifications";
-import { logInfo } from "./util/logger";
+import { showError, showInfo } from './foundry/notifications';
+import { logInfo } from './util/logger';
 
 type MigrateFn = () => Promise<void>;
 
@@ -16,7 +16,7 @@ export default async function executeMigrations(): Promise<void> {
     // migrationVersion setting was introduced. If there already is a valid migrationVersion setting, we do nothing.
     if (!game.settings?.get('kanka-foundry', 'migrationVersion')) {
         const hasJournalEntries = Array.from(game.journal?.values() ?? []).some((e: JournalEntry) => e.getFlag('kanka-foundry', 'id'));
-        console.log('Kanka', hasJournalEntries)
+        console.log('Kanka', hasJournalEntries);
         if (hasJournalEntries) {
             await game.settings?.set('kanka-foundry', 'migrationVersion', '2024-07-28');
         } else {
@@ -26,7 +26,7 @@ export default async function executeMigrations(): Promise<void> {
 
     const currentMigrationVersion = game.settings?.get('kanka-foundry', 'migrationVersion') ?? '0';
 
-    const relevantMigrations = sortedMigrationModuleNames.filter(key => getMigrationVersionFromModuleName(key) > currentMigrationVersion);
+    const relevantMigrations = sortedMigrationModuleNames.filter((key) => getMigrationVersionFromModuleName(key) > currentMigrationVersion);
     if (relevantMigrations.length === 0) return;
 
     try {
@@ -35,17 +35,18 @@ export default async function executeMigrations(): Promise<void> {
         for (const key of relevantMigrations) {
             logInfo(`Executing migration ${key}`);
             const version = getMigrationVersionFromModuleName(key);
-            await migrationModules[key].default();
+            const mod = migrationModules[key];
+            if (mod) await mod.default();
             await game.settings?.set('kanka-foundry', 'migrationVersion', version);
         }
 
         showInfo('migration.finished');
     } catch (error) {
-        showError('migration.failed', { error: (error as Error).message });
+        showError('migration.failed', { error: error instanceof Error ? error.message : String(error) });
     }
-
 }
 
-export function getLatestMigrationVersion() {
-    return getMigrationVersionFromModuleName(sortedMigrationModuleNames[sortedMigrationModuleNames.length - 1]);
+function getLatestMigrationVersion() {
+    const last = sortedMigrationModuleNames[sortedMigrationModuleNames.length - 1];
+    return getMigrationVersionFromModuleName(last ?? '');
 }

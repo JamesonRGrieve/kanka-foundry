@@ -13,9 +13,16 @@
 import api from '../../api';
 import type { KankaApiAttribute, KankaApiId, KankaApiQuestElement, KankaApiTimelineElement } from '../../types/kanka';
 import { logError, logInfo } from '../../util/logger';
-
 import ApplicationV2 = foundry.applications.api.ApplicationV2;
 import type { DeepPartial } from 'fvtt-types/utils';
+function assertType<T>(_value: unknown): asserts _value is T {}
+
+function getGameProp<T>(key: string): T | undefined {
+    const raw: unknown = Reflect.get(game, key);
+    if (raw === null || raw === undefined) return undefined;
+    assertType<T>(raw);
+    return raw;
+}
 
 const RESOLVED_COLOUR = '#22cc66';
 
@@ -32,8 +39,8 @@ interface EventGraphNode {
     name: string;
     source: string;
     location?: string;
-    /** Dependency tree. null = no dependencies. */
-    requires?: RequirementNode;
+    /** Dependency tree. null = no dependencies. For legacy data, may be an array (treated as implicit all). */
+    requires?: RequirementNode | RequirementNode[];
     /** Legacy flat OR — normalised into requires on load. */
     requires_any?: string[] | null;
     excuse?: Record<string, string>;
@@ -81,7 +88,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
     #activeTab: TabId = 'timeline';
     #attitudesLoaded = false;
 
-    static DEFAULT_OPTIONS: DeepPartial<ApplicationV2.Configuration> = {
+    static override DEFAULT_OPTIONS: DeepPartial<ApplicationV2.Configuration> = {
         id: 'kanka-event-tracker',
         window: {
             title: 'Event Tracker',
@@ -141,7 +148,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
     // ── Foundry render ──
 
-    async _renderHTML(_context: unknown, _options: unknown): Promise<HTMLElement> {
+    override async _renderHTML(_context: unknown, _options: unknown): Promise<HTMLElement> {
         const wrapper = document.createElement('div');
         wrapper.classList.add('event-tracker');
 
@@ -167,7 +174,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
             if (!this.#attitudesLoaded && this.#campaignId) {
                 this.#attitudesLoaded = true;
                 wrapper.innerHTML += '<p style="padding:12px;"><i class="fas fa-spinner fa-spin"></i> Loading NPC attitudes...</p>';
-                this.loadNpcAttitudes().then(() => this.render(true));
+                this.loadNpcAttitudes().then(async () => this.render(true));
                 return wrapper;
             }
             wrapper.appendChild(this.buildRelationsContent());
@@ -176,7 +183,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
         return wrapper;
     }
 
-    _replaceHTML(result: HTMLElement, content: HTMLElement, _options: unknown): void {
+    override _replaceHTML(result: HTMLElement, content: HTMLElement, _options: unknown): void {
         content.replaceChildren(result);
         this.activateListeners(result);
     }
@@ -186,28 +193,35 @@ export default class EventTrackerApplication extends ApplicationV2 {
     private activateListeners(html: HTMLElement): void {
         for (const cb of html.querySelectorAll<HTMLInputElement>('input[data-event-id]')) {
             cb.addEventListener('change', async (ev) => {
-                const t = ev.currentTarget as HTMLInputElement;
-                await this.toggleResolved(t.dataset.eventId ?? '', t.checked);
+                const tRaw: unknown = ev.currentTarget;
+                if (tRaw === null || typeof tRaw !== 'object' || !('dataset' in tRaw)) return;
+                assertType<HTMLInputElement>(tRaw);
+                await this.toggleResolved(tRaw.dataset['eventId'] ?? '', tRaw.checked);
             });
         }
 
         for (const btn of html.querySelectorAll<HTMLButtonElement>('.evt-tab-btn')) {
             btn.addEventListener('click', () => {
-                this.#activeTab = (btn.dataset.tab as TabId) ?? 'timeline';
+                const rawTab = btn.dataset['tab'];
+                this.#activeTab = rawTab === 'timeline' || rawTab === 'location' || rawTab === 'relations' ? rawTab : 'timeline';
                 this.render(true);
             });
         }
 
-        html.querySelector('.evt-day-prev')?.addEventListener('click', () => this.changeDay(-1));
-        html.querySelector('.evt-day-next')?.addEventListener('click', () => this.changeDay(1));
+        html.querySelector('.evt-day-prev')?.addEventListener('click', async () => this.changeDay(-1));
+        html.querySelector('.evt-day-next')?.addEventListener('click', async () => this.changeDay(1));
 
         for (const btn of html.querySelectorAll<HTMLButtonElement>('.evt-scene-btn')) {
             btn.addEventListener('click', async () => {
-                const loc = btn.dataset.location ?? '';
-                const action = btn.dataset.sceneAction ?? '';
+                const loc = btn.dataset['location'] ?? '';
+                const action = btn.dataset['sceneAction'] ?? '';
                 if (action === 'go') {
-                    const scene = this.findScene(loc) as { view(): Promise<unknown> } | null;
-                    if (scene) await scene.view();
+                    const scene = this.findScene(loc);
+                    const sceneObj: unknown = scene;
+                    if (sceneObj !== null && typeof sceneObj === 'object' && 'view' in sceneObj) {
+                        assertType<{ view(): Promise<unknown> }>(sceneObj);
+                        await sceneObj.view();
+                    }
                 } else if (action === 'spawn') {
                     await this.spawnScene(loc);
                 }
@@ -220,8 +234,8 @@ export default class EventTrackerApplication extends ApplicationV2 {
             input.addEventListener('input', () => {
                 clearTimeout(timer);
                 timer = setTimeout(() => {
-                    const charName = input.dataset.char ?? '';
-                    const key = input.dataset.attKey ?? '';
+                    const charName = input.dataset['char'] ?? '';
+                    const key = input.dataset['attKey'] ?? '';
                     this.savePcAttitude(charName, key, input.value);
                 }, 1500);
             });
@@ -231,13 +245,13 @@ export default class EventTrackerApplication extends ApplicationV2 {
         for (const link of html.querySelectorAll<HTMLAnchorElement>('.evt-xlink')) {
             link.addEventListener('click', (ev) => {
                 ev.preventDefault();
-                const tab = (link.dataset.tab as TabId) ?? 'timeline';
-                const group = link.dataset.group ?? '';
+                const rawLinkTab = link.dataset['tab'];
+                const tab: TabId = rawLinkTab === 'timeline' || rawLinkTab === 'location' || rawLinkTab === 'relations' ? rawLinkTab : 'timeline';
+                const group = link.dataset['group'] ?? '';
                 this.#activeTab = tab;
                 this.render(true);
                 requestAnimationFrame(() => {
-                    const target = html.closest('.event-tracker')
-                        ?.querySelector(`[data-group-name="${CSS.escape(group)}"]`);
+                    const target = html.closest('.event-tracker')?.querySelector(`[data-group-name="${CSS.escape(group)}"]`);
                     if (target) {
                         target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         target.classList.add('evt-flash');
@@ -252,7 +266,8 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
     private getCurrentDay(): number {
         try {
-            return (game.settings?.get('kanka-foundry', 'currentDay') as number) ?? 0;
+            const raw: unknown = game.settings?.get('kanka-foundry', 'currentDay');
+            return typeof raw === 'number' ? raw : 0;
         } catch {
             return 0;
         }
@@ -263,7 +278,9 @@ export default class EventTrackerApplication extends ApplicationV2 {
         const next = Math.max(0, current + delta);
         try {
             await game.settings?.set('kanka-foundry', 'currentDay', next);
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
         this.render(true);
     }
 
@@ -271,6 +288,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
         const m = source.match(/^Day\s+(M?\d+)/);
         if (!m) return null;
         const d = m[1];
+        if (d === undefined) return null;
         return d.startsWith('M') ? 100 + Number.parseInt(d.slice(1), 10) : Number.parseInt(d, 10);
     }
 
@@ -281,19 +299,28 @@ export default class EventTrackerApplication extends ApplicationV2 {
     // ── Scene integration ──
 
     private findScene(locationName: string): unknown {
-        const scenes = (game as Record<string, unknown>).scenes as Record<string, unknown> | undefined;
-        return (scenes?.getName as ((n: string) => unknown) | undefined)?.(locationName) ?? null;
+        const scenes: unknown = getGameProp('scenes');
+        if (scenes === null || typeof scenes !== 'object') return null;
+        const getNameFn: unknown = Reflect.get(scenes, 'getName');
+        if (typeof getNameFn !== 'function') return null;
+        assertType<(n: string) => unknown>(getNameFn);
+        return getNameFn.call(scenes, locationName) ?? null;
     }
 
     private getActiveSceneName(): string {
-        const scenes = (game as Record<string, unknown>).scenes as Record<string, unknown> | undefined;
-        const active = scenes?.active as Record<string, unknown> | undefined;
-        return (active?.name as string) ?? '';
+        const scenes: unknown = getGameProp('scenes');
+        if (scenes === null || typeof scenes !== 'object') return '';
+        const active: unknown = Reflect.get(scenes, 'active');
+        if (active === null || typeof active !== 'object') return '';
+        const name: unknown = Reflect.get(active, 'name');
+        return typeof name === 'string' ? name : '';
     }
 
     private async spawnScene(locationName: string): Promise<void> {
         try {
-            await (Scene as unknown as { create(data: Record<string, unknown>): Promise<unknown> }).create({ name: locationName, width: 1000, height: 1000 });
+            const SceneClass: unknown = Scene;
+            assertType<{ create(data: Record<string, unknown>): Promise<unknown> }>(SceneClass);
+            await SceneClass.create({ name: locationName, width: 1000, height: 1000 });
             logInfo(`EventTracker: created scene "${locationName}"`);
             this.render(true);
         } catch (err) {
@@ -304,15 +331,18 @@ export default class EventTrackerApplication extends ApplicationV2 {
     // ── PC names from Foundry actors ──
 
     private getPcNames(): string[] {
-        const actors = (game as Record<string, unknown>).actors as Iterable<{ name: string; type: string }> | undefined;
-        if (!actors) return [];
+        const actorsRaw: unknown = Reflect.get(game, 'actors');
+        if (!Array.isArray(actorsRaw)) return [];
+        const actorsArr: unknown[] = Array.from(actorsRaw as unknown[]);
         const names: string[] = [];
-        for (const actor of actors) {
+        for (const actorUnk of actorsArr) {
+            if (actorUnk === null || typeof actorUnk !== 'object') continue;
+            assertType<{ name: string; type: string }>(actorUnk);
             // wh40k-rpg actor types are <system>-<kind>; legacy bare
             // 'character' is migrated away by
             // 2026-05-11-system-prefix-actor-types.
-            if (actor.type.endsWith('-character')) {
-                names.push(actor.name);
+            if (actorUnk.type.endsWith('-character')) {
+                names.push(actorUnk.name);
             }
         }
         return names.sort();
@@ -329,7 +359,9 @@ export default class EventTrackerApplication extends ApplicationV2 {
         if (campaigns.length === 0) {
             throw new Error('No campaigns found. Check your Kanka API token and base URL.');
         }
-        const campaignId = Number(campaigns[0].id);
+        const firstCampaign = campaigns[0];
+        if (!firstCampaign) throw new Error('No campaigns found.');
+        const campaignId = Number(firstCampaign.id);
         this.#campaignId = campaignId;
 
         const elementsByEventId = new Map<string, ElementRef>();
@@ -354,8 +386,11 @@ export default class EventTrackerApplication extends ApplicationV2 {
         if (campaignTimeline) {
             timelineEntityId = Number(campaignTimeline.entity_id);
             let elements: KankaApiTimelineElement[];
-            try { elements = await api.getTimelineElements(campaignId, campaignTimeline.id); }
-            catch { elements = []; }
+            try {
+                elements = await api.getTimelineElements(campaignId, campaignTimeline.id);
+            } catch {
+                elements = [];
+            }
             for (const elem of elements) {
                 const eventId = elem.date;
                 if (!eventId) continue;
@@ -366,30 +401,41 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
         let graph: EventGraph = {};
         const dispositions: DispositionMap = {};
-        const graphEntityId = timelineEntityId
-            ?? (quests.find((q) => q.name === 'Campaign Timeline')
-                ? Number(quests.find((q) => q.name === 'Campaign Timeline')?.entity_id)
-                : null);
+        const graphEntityId =
+            timelineEntityId ??
+            (quests.find((q) => q.name === 'Campaign Timeline') ? Number(quests.find((q) => q.name === 'Campaign Timeline')?.entity_id) : null);
 
         if (graphEntityId) {
             try {
                 const attrs = await api.getEntityAttributes(campaignId, graphEntityId);
                 const graphAttr = attrs.find((a: KankaApiAttribute) => a.name === 'event_graph');
                 if (graphAttr?.value) {
-                    const parsed = JSON.parse(graphAttr.value);
-                    if (parsed.events) {
-                        graph = parsed.events;
-                        const rawDisps = parsed.dispositions ?? {};
-                        for (const [name, val] of Object.entries(rawDisps)) {
-                            if (Array.isArray(val)) {
-                                dispositions[name] = { entity_id: null, states: val as DispositionEntry[], pcAttitudes: {} };
-                            } else {
-                                const d = val as { entity_id?: number; states?: DispositionEntry[] };
-                                dispositions[name] = { entity_id: d.entity_id ?? null, states: d.states ?? [], pcAttitudes: {} };
+                    const parsedRaw: unknown = JSON.parse(graphAttr.value);
+                    if (parsedRaw === null || typeof parsedRaw !== 'object') return;
+                    const eventsRaw: unknown = Reflect.get(parsedRaw, 'events');
+                    if (eventsRaw) {
+                        assertType<EventGraph>(eventsRaw);
+                        graph = eventsRaw;
+                        const rawDisps: unknown = Reflect.get(parsedRaw, 'dispositions') ?? {};
+                        if (rawDisps !== null && typeof rawDisps === 'object') {
+                            assertType<Record<string, unknown>>(rawDisps);
+                            for (const [name, val] of Object.entries(rawDisps)) {
+                                if (Array.isArray(val)) {
+                                    assertType<DispositionEntry[]>(val);
+                                    dispositions[name] = { entity_id: null, states: val, pcAttitudes: {} };
+                                } else if (val !== null && typeof val === 'object') {
+                                    const entityIdRaw: unknown = Reflect.get(val, 'entity_id');
+                                    const statesRaw: unknown = Reflect.get(val, 'states');
+                                    const entityId = typeof entityIdRaw === 'number' ? entityIdRaw : null;
+                                    assertType<DispositionEntry[]>(statesRaw);
+                                    const states: DispositionEntry[] = Array.isArray(statesRaw) ? statesRaw : [];
+                                    dispositions[name] = { entity_id: entityId, states, pcAttitudes: {} };
+                                }
                             }
                         }
                     } else {
-                        graph = parsed;
+                        assertType<EventGraph>(parsedRaw);
+                        graph = parsedRaw;
                     }
                 }
             } catch (err) {
@@ -412,10 +458,12 @@ export default class EventTrackerApplication extends ApplicationV2 {
                 const attrs = await api.getEntityAttributes(this.#campaignId, npc.entity_id);
                 for (const attr of attrs) {
                     if (attr.name.startsWith('attitude_')) {
-                        npc.pcAttitudes[attr.name.slice('attitude_'.length)] = (attr.value as string) ?? '';
+                        npc.pcAttitudes[attr.name.slice('attitude_'.length)] = typeof attr.value === 'string' ? attr.value : '';
                     }
                 }
-            } catch { /* non-critical */ }
+            } catch {
+                /* non-critical */
+            }
         }
     }
 
@@ -429,15 +477,16 @@ export default class EventTrackerApplication extends ApplicationV2 {
         const newColour = resolved ? RESOLVED_COLOUR : null;
         try {
             if (ref.type === 'quest') {
-                await api.patchQuestElement(this.#campaignId, ref.parentId, ref.element.id,
-                    { colour: newColour, name: ref.element.name });
+                await api.patchQuestElement(this.#campaignId, ref.parentId, ref.element.id, { colour: newColour, name: ref.element.name });
             } else {
-                await api.patchTimelineElement(this.#campaignId, ref.parentId, ref.element.id,
-                    { colour: newColour, name: ref.element.name });
+                await api.patchTimelineElement(this.#campaignId, ref.parentId, ref.element.id, { colour: newColour, name: ref.element.name });
             }
             ref.element.colour = newColour;
-            if (resolved) { this.#state.resolvedIds.add(eventId); }
-            else { this.#state.resolvedIds.delete(eventId); }
+            if (resolved) {
+                this.#state.resolvedIds.add(eventId);
+            } else {
+                this.#state.resolvedIds.delete(eventId);
+            }
             logInfo(`EventTracker: ${eventId} → ${resolved ? 'resolved' : 'pending'}`);
         } catch (err) {
             logError(`EventTracker: failed to update ${eventId}`, err);
@@ -499,7 +548,8 @@ export default class EventTrackerApplication extends ApplicationV2 {
         const children: RequirementNode[] = [];
         if (Array.isArray(node.requires)) {
             for (const r of node.requires) {
-                children.push(r as RequirementNode);
+                assertType<RequirementNode>(r);
+                children.push(r);
             }
         }
         if (node.requires_any?.length) {
@@ -507,7 +557,10 @@ export default class EventTrackerApplication extends ApplicationV2 {
         }
 
         if (children.length === 0) return null;
-        if (children.length === 1) return children[0];
+        if (children.length === 1) {
+            const first = children[0];
+            return first !== undefined ? first : null;
+        }
         return { all: children };
     }
 
@@ -536,7 +589,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
         if (sourceRaw) {
             const dayMatch = sourceRaw.match(/^Day\s+(M?\d+)/);
             if (dayMatch) {
-                result += ` on <a class="evt-xlink" data-tab="timeline" data-group="${sourceRaw}">${sourceRaw.split('—')[0].trim()}</a> or later`;
+                result += ` on <a class="evt-xlink" data-tab="timeline" data-group="${sourceRaw}">${(sourceRaw.split('—')[0] ?? sourceRaw).trim()}</a> or later`;
             } else {
                 result += ` via <a class="evt-xlink" data-tab="timeline" data-group="${sourceRaw}">${sourceRaw}</a>`;
             }
@@ -618,7 +671,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
         for (const tab of tabs) {
             const btn = document.createElement('button');
             btn.className = `evt-tab-btn ${this.#activeTab === tab.id ? 'active' : ''}`;
-            btn.dataset.tab = tab.id;
+            btn.dataset['tab'] = tab.id;
             btn.innerHTML = `<i class="fas ${tab.icon}"></i> ${tab.label}`;
             bar.appendChild(btn);
         }
@@ -630,8 +683,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
         if (!state) return document.createElement('div');
         const total = Object.keys(state.graph).length;
         const resolvedCount = state.resolvedIds.size;
-        const availableCount = Object.keys(state.graph)
-            .filter((id) => !state.resolvedIds.has(id) && this.isAvailable(id)).length;
+        const availableCount = Object.keys(state.graph).filter((id) => !state.resolvedIds.has(id) && this.isAvailable(id)).length;
         const stats = document.createElement('div');
         stats.className = 'evt-stats';
         stats.textContent = `${resolvedCount}/${total} resolved · ${availableCount} available now`;
@@ -649,7 +701,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.dataset.eventId = eventId;
+        cb.dataset['eventId'] = eventId;
         cb.checked = isResolved;
         cb.disabled = !isResolved && !isAvail;
         row.appendChild(cb);
@@ -714,8 +766,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
         }
 
         const sorted = [...groupMap.entries()].sort(([a], [b]) => {
-            return EventTrackerApplication.sourceSortKey(a) - EventTrackerApplication.sourceSortKey(b)
-                || a.localeCompare(b);
+            return EventTrackerApplication.sourceSortKey(a) - EventTrackerApplication.sourceSortKey(b) || a.localeCompare(b);
         });
 
         for (const [groupName, events] of sorted) {
@@ -725,7 +776,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
             const groupEl = document.createElement('div');
             groupEl.className = `evt-group${isCurrent ? ' evt-current-day' : ''}${isFuture ? ' evt-future' : ''}`;
-            groupEl.dataset.groupName = groupName;
+            groupEl.dataset['groupName'] = groupName;
 
             const header = document.createElement('h3');
             header.textContent = groupName;
@@ -770,8 +821,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
             groupMap.get(loc)?.push({ eventId, node });
         }
 
-        const hasAvailable = (events: { eventId: string }[]): boolean =>
-            events.some((e) => !state.resolvedIds.has(e.eventId) && this.isAvailable(e.eventId));
+        const hasAvailable = (events: { eventId: string }[]): boolean => events.some((e) => !state.resolvedIds.has(e.eventId) && this.isAvailable(e.eventId));
 
         const sorted = [...groupMap.entries()].sort(([a, evtsA], [b, evtsB]) => {
             if (a === activeScene) return -1;
@@ -787,7 +837,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
             const groupEl = document.createElement('div');
             groupEl.className = `evt-group${isActive ? ' evt-active-scene' : ''}`;
-            groupEl.dataset.groupName = locationName;
+            groupEl.dataset['groupName'] = locationName;
 
             const header = document.createElement('div');
             header.className = 'evt-loc-header';
@@ -811,12 +861,12 @@ export default class EventTrackerApplication extends ApplicationV2 {
                 const scene = this.findScene(locationName);
                 const btn = document.createElement('button');
                 btn.className = 'evt-scene-btn';
-                btn.dataset.location = locationName;
+                btn.dataset['location'] = locationName;
                 if (scene) {
-                    btn.dataset.sceneAction = 'go';
+                    btn.dataset['sceneAction'] = 'go';
                     btn.innerHTML = '<i class="fas fa-eye"></i> Go to Scene';
                 } else {
-                    btn.dataset.sceneAction = 'spawn';
+                    btn.dataset['sceneAction'] = 'spawn';
                     btn.innerHTML = '<i class="fas fa-plus"></i> Spawn Scene';
                 }
                 header.appendChild(btn);
@@ -836,8 +886,9 @@ export default class EventTrackerApplication extends ApplicationV2 {
     // ── Relations tab ──
 
     private getActiveDisposition(npc: NpcDisposition): DispositionEntry {
+        const fallback: DispositionEntry = npc.states[0] ?? { attitude: 'unknown', note: '' };
         const state = this.#state;
-        if (!state) return npc.states[0];
+        if (!state) return fallback;
 
         let active = npc.states.find((e) => e.default);
         for (const entry of npc.states) {
@@ -845,7 +896,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
                 active = entry;
             }
         }
-        return active ?? npc.states[0];
+        return active ?? fallback;
     }
 
     private buildRelationsContent(): HTMLElement {
@@ -860,12 +911,31 @@ export default class EventTrackerApplication extends ApplicationV2 {
         }
 
         const attitudeColors: Record<string, string> = {
-            cooperative: '#2d6', warm: '#2d6', professional: '#6af', reserved: '#888',
-            helpful: '#6af', grateful: '#2d6', trusting: '#2d6', observant: '#6af',
-            candid: '#2d6', curious: '#c9f', open: '#c9f', missing: '#666', hidden: '#666',
-            dismissed: '#888', anxious: '#c96', defensive: '#c66', evasive: '#c96',
-            controlled: '#c66', disrupted: '#c9f', obstructive: '#c66', guarded: '#c96',
-            distressed: '#c66', desperate: '#f66', cornered: '#f44', hostile: '#f22',
+            cooperative: '#2d6',
+            warm: '#2d6',
+            professional: '#6af',
+            reserved: '#888',
+            helpful: '#6af',
+            grateful: '#2d6',
+            trusting: '#2d6',
+            observant: '#6af',
+            candid: '#2d6',
+            curious: '#c9f',
+            open: '#c9f',
+            missing: '#666',
+            hidden: '#666',
+            dismissed: '#888',
+            anxious: '#c96',
+            defensive: '#c66',
+            evasive: '#c96',
+            controlled: '#c66',
+            disrupted: '#c9f',
+            obstructive: '#c66',
+            guarded: '#c96',
+            distressed: '#c66',
+            desperate: '#f66',
+            cornered: '#f44',
+            hostile: '#f22',
         };
 
         for (const [charName, npc] of Object.entries(state.dispositions)) {
@@ -878,8 +948,9 @@ export default class EventTrackerApplication extends ApplicationV2 {
             // Header: name + computed party attitude
             const header = document.createElement('div');
             header.className = 'evt-rel-header';
-            header.innerHTML = `<span class="evt-rel-name">${charName}</span>`
-                + `<span class="evt-rel-attitude" style="color:${color}">${active.attitude.toUpperCase()}</span>`;
+            header.innerHTML =
+                `<span class="evt-rel-name">${charName}</span>` +
+                `<span class="evt-rel-attitude" style="color:${color}">${active.attitude.toUpperCase()}</span>`;
             card.appendChild(header);
 
             const note = document.createElement('div');
@@ -924,8 +995,8 @@ export default class EventTrackerApplication extends ApplicationV2 {
                     input.className = 'evt-att-input';
                     input.value = npc.pcAttitudes[pcName] ?? 'Not Met';
                     input.placeholder = 'Not Met';
-                    input.dataset.char = charName;
-                    input.dataset.attKey = pcName;
+                    input.dataset['char'] = charName;
+                    input.dataset['attKey'] = pcName;
                     row.appendChild(input);
 
                     attSection.appendChild(row);

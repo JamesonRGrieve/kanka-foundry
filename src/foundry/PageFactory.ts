@@ -1,16 +1,16 @@
 import type ReferenceCollection from '../api/ReferenceCollection';
 import type { KankaPageModel } from '../apps/KankaJournal/models/KankaPageModel';
-import type { KankaApiAnyId, KankaApiChildEntity, KankaApiChildEntityWithChildren, KankaApiEntityId, KankaApiId, KankaApiModuleType } from "../types/kanka";
+import type { KankaApiAnyId, KankaApiChildEntity, KankaApiChildEntityWithChildren, KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../types/kanka';
 import type Reference from '../types/Reference';
 import groupBy from '../util/groupBy';
 import isSecret from '../util/isSecret';
 import { hasChildren, isCharacter, isFamily, isOrganisation, isQuest } from '../util/kankaTypeGuards';
 import unzip from '../util/unzip';
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 type KeysOfValue<T, TCondition> = {
-    [K in keyof T]: T[K] extends TCondition
-    ? K
-    : never;
+    [K in keyof T]: T[K] extends TCondition ? K : never;
 }[keyof T];
 
 export default class PageFactory {
@@ -42,11 +42,18 @@ export default class PageFactory {
     private getCounts<T>(list: T[], refProp?: KeysOfValue<T, KankaApiAnyId>, type?: KankaApiModuleType) {
         return {
             publicCount: list
-                .map(item => {
-                    let ref: Reference | undefined ;
+                .map((item) => {
+                    let ref: Reference | undefined;
 
                     if (refProp) {
-                        ref = type ? this.references.findByIdAndType(item[refProp] as KankaApiId, type) : this.references.findByEntityId(item[refProp] as KankaApiEntityId)
+                        const rawId: unknown = item[refProp];
+                        if (type) {
+                            assertType<KankaApiId>(rawId);
+                            ref = this.references.findByIdAndType(rawId, type);
+                        } else {
+                            assertType<KankaApiEntityId>(rawId);
+                            ref = this.references.findByEntityId(rawId);
+                        }
                     }
 
                     return {
@@ -54,8 +61,7 @@ export default class PageFactory {
                         ref,
                     };
                 })
-                .filter(({ item, ref }) => !isSecret(item, ref))
-                .length,
+                .filter(({ item, ref }) => !isSecret(item, ref)).length,
             totalCount: list.length,
         };
     }
@@ -78,17 +84,18 @@ export default class PageFactory {
         pageType: keyof DataModelConfig['JournalEntryPage'] extends `kanka-foundry.${infer U}` ? U : never,
         name: string,
         snapshot: unknown,
-        { publicCount, totalCount }: { publicCount?: number, totalCount?: number } = {},
+        { publicCount, totalCount }: { publicCount?: number; totalCount?: number } = {},
         { show = true, level = 1 } = {},
         other: Record<string, unknown> = {},
         sheet: string | null = 'kanka-foundry.DefaultPageSheet',
     ): JournalEntryPage.CreateData | null {
-        const list = (snapshot as { list?: unknown })?.list;
-        if (Array.isArray(list) && list.length === 0) {
+        const snapshotList: unknown = snapshot !== null && typeof snapshot === 'object' ? Reflect.get(snapshot, 'list') : undefined;
+        const list: unknown[] | undefined = Array.isArray(snapshotList) ? Array.from(snapshotList as unknown[]) : undefined;
+        if (list !== undefined && list.length === 0) {
             return null;
         }
 
-        return {
+        const page = {
             type: `kanka-foundry.${pageType}`,
             name,
             title: { show, level },
@@ -96,7 +103,9 @@ export default class PageFactory {
             ownership: this.getOwnership(name, publicCount),
             flags: sheet ? { core: { sheetClass: sheet } } : {},
             ...other,
-        } as JournalEntryPage.CreateData;
+        };
+        assertType<JournalEntryPage.CreateData>(page);
+        return page;
     }
 
     createEntityImagePage(): JournalEntryPage.CreateData | null {
@@ -132,10 +141,7 @@ export default class PageFactory {
             return null;
         }
 
-        const countObjects = [
-            ...appearance.map(() => ({ is_private: false })),
-            ...personality.map(() => ({ is_private: !isPersonalityVisible })),
-        ];
+        const countObjects = [...appearance.map(() => ({ is_private: false })), ...personality.map(() => ({ is_private: !isPersonalityVisible }))];
 
         return this.createPage(
             'character-profile',
@@ -147,13 +153,7 @@ export default class PageFactory {
     }
 
     createOverviewPage(): JournalEntryPage.CreateData | null {
-        return this.createPage(
-            'overview',
-            'KANKA.journal.shared.pages.story',
-            this.entity,
-            undefined,
-            { show: false },
-        );
+        return this.createPage('overview', 'KANKA.journal.shared.pages.story', this.entity, undefined, { show: false });
     }
 
     private createPostPage(name: string, content: string | null | undefined, isSecret: boolean) {
@@ -179,13 +179,9 @@ export default class PageFactory {
         );
 
         return [
-            ...prePosts.map((note) =>
-                this.createPostPage(note.name, note.entry_parsed, isSecret(note))
-            ),
+            ...prePosts.map((note) => this.createPostPage(note.name, note.entry_parsed, isSecret(note))),
             this.createPostPage('KANKA.journal.shared.pages.entry', this.entity.entry_parsed, false),
-            ...postPosts.map((note) =>
-                this.createPostPage(note.name, note.entry_parsed, isSecret(note))
-            ),
+            ...postPosts.map((note) => this.createPostPage(note.name, note.entry_parsed, isSecret(note))),
         ];
     }
 
@@ -220,7 +216,11 @@ export default class PageFactory {
             'family-members',
             'KANKA.journal.family.pages.members',
             { list: this.entity.members },
-            this.getCounts(this.entity.members.map(m => ({ id: m })), 'id', 'character'),
+            this.getCounts(
+                this.entity.members.map((m) => ({ id: m })),
+                'id',
+                'character',
+            ),
         );
     }
 
@@ -251,12 +251,7 @@ export default class PageFactory {
     }
 
     createAssetsPage(): JournalEntryPage.CreateData | null {
-        return this.createPage(
-            'assets',
-            'KANKA.journal.shared.pages.assets',
-            { list: this.entity.entity_assets },
-            this.getCounts(this.entity.entity_assets),
-        );
+        return this.createPage('assets', 'KANKA.journal.shared.pages.assets', { list: this.entity.entity_assets }, this.getCounts(this.entity.entity_assets));
     }
 
     createAssetFilePages(): Array<JournalEntryPage.CreateData | null> {
@@ -264,52 +259,46 @@ export default class PageFactory {
             return [];
         }
 
-        return this.entity.entity_assets
-            .map(asset => {
-                if (asset._file && /^image\/.*/.test(asset.metadata.type)) {
-                    return {
-                        type: 'image',
-                        name: asset.name,
-                        title: { show: false, level: 2 },
-                        ownership: this.getOwnership(asset.name, this.getCounts([asset], 'id').publicCount),
-                        src: asset._url,
-                        image: { caption: asset.name },
-                    };
-                }
+        return this.entity.entity_assets.map((asset) => {
+            if (asset._file && /^image\/.*/.test(asset.metadata.type)) {
+                return {
+                    type: 'image',
+                    name: asset.name,
+                    title: { show: false, level: 2 },
+                    ownership: this.getOwnership(asset.name, this.getCounts([asset], 'id').publicCount),
+                    src: asset._url,
+                    image: { caption: asset.name },
+                };
+            }
 
-                if (asset._file && /^audio\/.*/.test(asset.metadata.type)) {
-                    return {
-                        type: 'video',
-                        name: asset.name,
-                        title: { show: false, level: 2 },
-                        ownership: this.getOwnership(asset.name, this.getCounts([asset], 'id').publicCount),
-                        src: asset._url,
-                        video: { controls: true, autoplay: false, loop: false },
-                    };
-                }
+            if (asset._file && /^audio\/.*/.test(asset.metadata.type)) {
+                return {
+                    type: 'video',
+                    name: asset.name,
+                    title: { show: false, level: 2 },
+                    ownership: this.getOwnership(asset.name, this.getCounts([asset], 'id').publicCount),
+                    src: asset._url,
+                    video: { controls: true, autoplay: false, loop: false },
+                };
+            }
 
-                if (asset._link && /^https:\/\/(www\.)?youtube\.com/.test(asset.metadata.url)) {
-                    return {
-                        type: 'video',
-                        name: asset.name,
-                        title: { show: false, level: 2 },
-                        ownership: this.getOwnership(asset.name, this.getCounts([asset], 'id').publicCount),
-                        src: asset.metadata.url,
-                        video: { controls: true, autoplay: false, loop: false },
-                    };
-                }
+            if (asset._link && /^https:\/\/(www\.)?youtube\.com/.test(asset.metadata.url)) {
+                return {
+                    type: 'video',
+                    name: asset.name,
+                    title: { show: false, level: 2 },
+                    ownership: this.getOwnership(asset.name, this.getCounts([asset], 'id').publicCount),
+                    src: asset.metadata.url,
+                    video: { controls: true, autoplay: false, loop: false },
+                };
+            }
 
-                return null;
-            });
+            return null;
+        });
     }
 
     createAttributesPage(): JournalEntryPage.CreateData | null {
-        return this.createPage(
-            'attributes',
-            'KANKA.journal.shared.pages.attributes',
-            { list: this.entity.attributes },
-            this.getCounts(this.entity.attributes),
-        );
+        return this.createPage('attributes', 'KANKA.journal.shared.pages.attributes', { list: this.entity.attributes }, this.getCounts(this.entity.attributes));
     }
 
     createAbilitiesPage(): JournalEntryPage.CreateData | null {
@@ -348,7 +337,11 @@ export default class PageFactory {
             'children',
             `KANKA.entityType.${this.type}`,
             { list: this.entity.children },
-            this.getCounts(this.entity.children.map(m => ({ id: m })), 'id', this.type),
+            this.getCounts(
+                this.entity.children.map((m) => ({ id: m })),
+                'id',
+                this.type,
+            ),
         );
     }
 }

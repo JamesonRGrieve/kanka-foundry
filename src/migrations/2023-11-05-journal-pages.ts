@@ -9,12 +9,9 @@ async function migrateEntry(entry: JournalEntry) {
     if (snapshot.entity_notes) snapshot.posts = snapshot.entity_notes;
     if (snapshot.entity_files) snapshot.entity_assets = snapshot.entity_files;
 
-    const references = ReferenceCollection.fromRecord(
-        entry.getFlag('kanka-foundry', 'campaign'),
-        entry.getFlag('kanka-foundry', 'references'),
-    );
+    const references = ReferenceCollection.fromRecord(entry.getFlag('kanka-foundry', 'campaign'), entry.getFlag('kanka-foundry', 'references'));
 
-    await Promise.all(snapshot.entity_events?.map((event) => references.addById(event.calendar_id, 'calendar')));
+    await Promise.all(snapshot.entity_events?.map(async (event: { calendar_id: number }) => references.addById(event.calendar_id, 'calendar')));
 
     return updateJournalEntry(entry, entry.getFlag('kanka-foundry', 'snapshot'), references);
 }

@@ -1,12 +1,28 @@
 import { showInfo } from '../foundry/notifications';
 import { logInfo } from '../util/logger';
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
+interface StoreSetting {
+    key: string;
+    value: string;
+}
+
+function getSettingValue(key: string): string | undefined {
+    const storageRaw: unknown = game.settings?.storage.get('world');
+    assertType<Iterable<unknown> | null | undefined>(storageRaw);
+    for (const item of storageRaw ?? []) {
+        if (item !== null && typeof item === 'object' && 'key' in item) {
+            assertType<StoreSetting>(item);
+            if (item.key === key) return item.value;
+        }
+    }
+    return undefined;
+}
+
 // Migrate to new Kanka-URL if the new one is available
 export default async function migrate(): Promise<void> {
-    const baseUrlSetting = game.settings?.storage
-        .get('world')
-        ?.find((setting) => setting.key === 'kanka-foundry.baseUrl');
-    const baseUrl = baseUrlSetting?.value ?? 'https://kanka.io';
+    const baseUrl = getSettingValue('kanka-foundry.baseUrl') ?? 'https://kanka.io';
 
     logInfo('Check for v2 migration...', { baseUrl });
 

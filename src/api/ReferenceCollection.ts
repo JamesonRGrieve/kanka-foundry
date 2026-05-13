@@ -1,11 +1,12 @@
-import type { KankaApiAnyId, KankaApiEntity, KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../types/kanka';
 import type Reference from '../types/Reference';
+import type { KankaApiAnyId, KankaApiEntity, KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../types/kanka';
 import api from '.';
+function assertType<T>(_value: unknown): asserts _value is T {}
 
 export default class ReferenceCollection {
-    #campaignId: KankaApiId;
-    #useLookup = false;
-    #entities: KankaApiEntity[];
+    readonly #campaignId: KankaApiId;
+    readonly #useLookup: boolean = false;
+    readonly #entities: KankaApiEntity[];
     #record: Record<number, Reference> = {};
 
     constructor(campaignId: KankaApiId, entities?: KankaApiEntity[]) {
@@ -48,9 +49,9 @@ export default class ReferenceCollection {
     }
 
     private addEntity(entity: KankaApiEntity): void {
-        if (this.#record[entity.id as number]) return;
+        if (this.#record[Number(entity.id)]) return;
 
-        this.#record[entity.id as number] = {
+        this.#record[Number(entity.id)] = {
             name: entity.name,
             id: entity.child_id,
             entityId: entity.id,
@@ -62,10 +63,7 @@ export default class ReferenceCollection {
         };
     }
 
-    private async findEntity(
-        id?: KankaApiAnyId | null,
-        type?: KankaApiModuleType | null,
-    ): Promise<KankaApiEntity | undefined> {
+    private async findEntity(id?: KankaApiAnyId | null, type?: KankaApiModuleType | null): Promise<KankaApiEntity | undefined> {
         const entity = this.findEntityInCollection(id, type);
 
         if (entity || this.#useLookup) {
@@ -74,7 +72,8 @@ export default class ReferenceCollection {
 
         try {
             if (!type) {
-                this.#entities.push(await api.getEntity(this.#campaignId, id as KankaApiEntityId));
+                assertType<KankaApiEntityId>(id);
+                this.#entities.push(await api.getEntity(this.#campaignId, id));
                 return this.findEntityInCollection(id);
             }
 
@@ -87,12 +86,7 @@ export default class ReferenceCollection {
         }
     }
 
-    protected findEntityInCollection(
-        id?: KankaApiAnyId | null,
-        type?: KankaApiModuleType | null,
-    ): KankaApiEntity | undefined {
-        return this.#entities.find(
-            (entity) => (!type && entity.id === id) || (entity.module.code === type && entity.child_id === id),
-        );
+    protected findEntityInCollection(id?: KankaApiAnyId | null, type?: KankaApiModuleType | null): KankaApiEntity | undefined {
+        return this.#entities.find((entity) => (!type && entity.id === id) || (entity.module.code === type && entity.child_id === id));
     }
 }

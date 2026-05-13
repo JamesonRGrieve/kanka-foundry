@@ -1,10 +1,26 @@
 import localization from '../../state/localization';
 
-export default function kankaLocalize(...args: unknown[]): string {
-    const options = args.pop() as Record<string, unknown>;
-    const data = (options.hash ?? {}) as Record<string, string>;
+interface HbsHash {
+    [key: string]: string;
+}
 
-    const parts = args.map((part) => {
+interface HbsOptions {
+    hash?: HbsHash;
+}
+
+function isHbsOptions(value: unknown): value is HbsOptions {
+    return value !== null && typeof value === 'object';
+}
+
+function isHbsHash(value: unknown): value is HbsHash {
+    return value !== null && typeof value === 'object';
+}
+
+export default function kankaLocalize(...args: unknown[]): string {
+    const rawOptions = args[args.length - 1];
+    const hash: HbsHash = isHbsOptions(rawOptions) && isHbsHash(rawOptions.hash) ? rawOptions.hash : {};
+
+    const parts = args.slice(0, -1).map((part) => {
         if (part === null || part === undefined) return 'notAvailable';
         if (typeof part === 'boolean') return part ? 'yes' : 'no';
         return String(part);
@@ -12,5 +28,5 @@ export default function kankaLocalize(...args: unknown[]): string {
 
     const key = ['KANKA', ...parts].join('.');
 
-    return foundry.utils.isEmpty(data) ? localization.localize(key) : localization.format(String(key), data);
+    return foundry.utils.isEmpty(hash) ? localization.localize(key) : localization.format(String(key), hash);
 }

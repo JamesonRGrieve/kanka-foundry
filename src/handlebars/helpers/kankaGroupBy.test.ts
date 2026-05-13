@@ -8,7 +8,9 @@ function compile(template: string, context = {}): string {
 
 describe('kankaGroupBy()', () => {
     beforeAll(() => {
-        Handlebars.registerHelper('kankaGroupBy', kankaGroupBy as unknown as HelperDelegate);
+        Handlebars.registerHelper('kankaGroupBy', function (this: unknown, data: Record<string, unknown>[], property: string) {
+            return kankaGroupBy(data, property);
+        });
     });
 
     afterAll(() => {

@@ -1,4 +1,12 @@
-import type { KankaApiCharacter, KankaApiChildEntity, KankaApiChildEntityWithChildren, KankaApiFamily, KankaApiModuleType, KankaApiOrganisation, KankaApiQuest } from "../types/kanka";
+import type {
+    KankaApiCharacter,
+    KankaApiChildEntity,
+    KankaApiChildEntityWithChildren,
+    KankaApiFamily,
+    KankaApiModuleType,
+    KankaApiOrganisation,
+    KankaApiQuest,
+} from '../types/kanka';
 
 export function isCharacter(entity: KankaApiChildEntity, type: KankaApiModuleType): entity is KankaApiCharacter {
     return type === 'character';
@@ -17,5 +25,5 @@ export function isQuest(entity: KankaApiChildEntity, type: KankaApiModuleType): 
 }
 
 export function hasChildren(entity: KankaApiChildEntity): entity is KankaApiChildEntityWithChildren {
-    return (entity as KankaApiChildEntityWithChildren).children !== undefined;
+    return 'children' in entity;
 }

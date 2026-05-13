@@ -22,7 +22,8 @@ const expectedIconClasses = [
 
 describe('kankaFileIcon()', () => {
     beforeAll(() => {
-        Handlebars.registerHelper('kankaFileIcon', kankaFileIcon as unknown as Handlebars.HelperDelegate);
+        const helper: Handlebars.HelperDelegate = kankaFileIcon;
+        Handlebars.registerHelper('kankaFileIcon', helper);
     });
 
     afterAll(() => {

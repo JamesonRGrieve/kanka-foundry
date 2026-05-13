@@ -1,0 +1,27 @@
+{
+  "strict": [
+    "TS18048",
+    "TS2322",
+    "TS2339",
+    "TS2345",
+    "TS2416",
+    "TS2532",
+    "TS2538",
+    "TS2722",
+    "TS2769",
+    "TS4111",
+    "TS4114",
+    "TS7005",
+    "TS7006",
+    "TS7015",
+    "TS7016",
+    "TS7022",
+    "TS7034",
+    "TS7053"
+  ],
+  "config": "tsconfig.strict.json",
+  "totals": {
+    "totalErrors": 0
+  },
+  "byCode": {}
+}

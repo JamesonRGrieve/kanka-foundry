@@ -8,10 +8,10 @@ interface ChangeEvent {
 type ChangeListener = (event: ChangeEvent) => void;
 
 export default class RateLimiter {
-    #timeframe: number;
+    readonly #timeframe: number;
     #limit: number;
     #active = 0;
-    #changeListeners: ChangeListener[] = [];
+    readonly #changeListeners: ChangeListener[] = [];
 
     constructor(timeframe: number, limit: number) {
         this.#timeframe = timeframe;
@@ -46,7 +46,7 @@ export default class RateLimiter {
         this.callListeners();
     }
 
-    public slot(): Promise<void> {
+    public async slot(): Promise<void> {
         // For self-hosted instances with high limits, just pass through.
         // Track active count for the debug display but don't block.
         this.#active++;

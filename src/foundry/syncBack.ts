@@ -1,11 +1,76 @@
 import api from '../api';
 import type { KankaApiAttribute, KankaApiEntityId, KankaApiId } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
-import {
-    CHARACTERISTIC_REVERSE_MAP,
-    STAT_REVERSE_MAP,
-} from './actorFactory';
+import { BIO_MAP, CHARACTERISTIC_REVERSE_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_REVERSE_MAP } from './actorAttributeMaps';
 import { syncTokenImage } from './tokenImage';
+
+function assertType<T>(_value: unknown): asserts _value is T {}
+
+function getActorSystem(actor: Actor): Record<string, unknown> {
+    const raw: unknown = Reflect.get(actor, 'system');
+    assertType<Record<string, unknown>>(raw);
+    return raw;
+}
+
+type ActorItemLike = { type: string; name: string; system: Record<string, unknown> };
+
+function* getActorItems(actor: Actor): Generator<ActorItemLike> {
+    const rawItems: unknown = Reflect.get(actor, 'items');
+    if (rawItems === null || typeof rawItems !== 'object') return;
+    // EmbeddedCollection has a `values()` method returning an Iterable — use it to avoid
+    // any[] widening from Array.isArray. Reflect ensures no implicit-any property access.
+    const valsFnRaw: unknown = Reflect.get(rawItems, 'values');
+    if (typeof valsFnRaw !== 'function') return;
+    // We need to call valsFn with rawItems as `this`. Use a typed wrapper:
+    type ValuesGetter = { values(): Iterable<unknown> };
+    assertType<ValuesGetter>(rawItems);
+    for (const item of rawItems.values()) {
+        if (item !== null && typeof item === 'object') {
+            assertType<ActorItemLike>(item);
+            yield item;
+        }
+    }
+}
+
+function getItemSystem(item: ActorItemLike): Record<string, unknown> {
+    return item.system;
+}
+
+function getGameActors(): Actors | undefined {
+    const raw: unknown = Reflect.get(game, 'actors');
+    assertType<Actors | undefined>(raw);
+    return raw;
+}
+
+function getActorFlag(actor: Actor, key: string): unknown {
+    const raw: unknown = Reflect.get(actor, 'flags');
+    if (raw === null || typeof raw !== 'object') return undefined;
+    const kanka: unknown = Reflect.get(raw, 'kanka-foundry');
+    if (kanka === null || typeof kanka !== 'object') return undefined;
+    return Reflect.get(kanka, key);
+}
+
+function getEntryFlag(entry: JournalEntry, key: string): unknown {
+    const raw: unknown = Reflect.get(entry, 'flags');
+    if (raw === null || typeof raw !== 'object') return undefined;
+    const kanka: unknown = Reflect.get(raw, 'kanka-foundry');
+    if (kanka === null || typeof kanka !== 'object') return undefined;
+    return Reflect.get(kanka, key);
+}
+
+function setNestedField(target: Record<string, unknown>, outerKey: string, innerKey: string, value: unknown): void {
+    if (!target[outerKey]) target[outerKey] = {};
+    const outer: unknown = target[outerKey];
+    if (outer !== null && typeof outer === 'object') {
+        Reflect.set(outer, innerKey, value);
+    }
+}
+
+function getNestedField(target: Record<string, unknown>, outerKey: string, innerKey: string): unknown {
+    const outer: unknown = target[outerKey];
+    if (outer === null || typeof outer !== 'object') return undefined;
+    return Reflect.get(outer, innerKey);
+}
 
 const DEBOUNCE_MS = 5000;
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -15,50 +80,13 @@ const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // ---------------------------------------------------------------------------
 
 /** Kanka attribute name -> Foundry system path */
-const CHARACTERISTIC_MAP: Record<string, string> = Object.fromEntries(
-    Object.entries(CHARACTERISTIC_REVERSE_MAP).map(([v, k]) => [k, v]),
-);
+const CHARACTERISTIC_MAP: Record<string, string> = Object.fromEntries(Object.entries(CHARACTERISTIC_REVERSE_MAP).map(([v, k]) => [k, v]));
 
 /** Kanka attribute name -> Foundry system path */
-const STAT_MAP: Record<string, string> = Object.fromEntries(
-    Object.entries(STAT_REVERSE_MAP).map(([v, k]) => [k, v]),
-);
-
-/** Foundry system.bio.* key -> Kanka attribute name */
-const BIO_MAP: Record<string, string> = {
-    gender: 'bio_gender',
-    age: 'bio_age',
-    build: 'bio_build',
-    complexion: 'bio_complexion',
-    hair: 'bio_hair',
-    eyes: 'bio_eyes',
-    quirks: 'bio_quirks',
-    superstition: 'bio_superstition',
-    mementos: 'bio_mementos',
-    playerName: 'bio_playerName',
-};
-
-/** Foundry system.originPath.* key -> Kanka attribute name */
-const ORIGIN_MAP: Record<string, string> = {
-    background: 'origin_background',
-    role: 'origin_role',
-    homeWorld: 'origin_homeWorld',
-    divination: 'origin_divination',
-    elite: 'origin_elite',
-    career: 'origin_career',
-    regiment: 'origin_regiment',
-    speciality: 'origin_speciality',
-};
+const STAT_MAP: Record<string, string> = Object.fromEntries(Object.entries(STAT_REVERSE_MAP).map(([v, k]) => [k, v]));
 
 /** JSON snapshot attribute names for complex data */
-const SNAPSHOT_KEYS = [
-    'character_skills',
-    'character_talents',
-    'character_equipment',
-    'character_weapons',
-    'character_armour',
-    'character_powers',
-] as const;
+const SNAPSHOT_KEYS = ['character_skills', 'character_talents', 'character_equipment', 'character_weapons', 'character_armour', 'character_powers'] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,7 +97,7 @@ function getSystemValue(system: Record<string, unknown>, path: string): unknown 
     let value: unknown = system;
     for (const part of parts) {
         if (value && typeof value === 'object') {
-            value = (value as Record<string, unknown>)[part];
+            value = Reflect.get(value, part);
         } else {
             return undefined;
         }
@@ -91,22 +119,30 @@ function kankaAttrValue(attrs: KankaApiAttribute[], name: string): string | unde
 // ---------------------------------------------------------------------------
 
 function buildSkillsSnapshot(actor: Actor): string {
-    const system = (actor as unknown as { system: Record<string, unknown> }).system;
-    const skills = system.skills as Record<string, Record<string, unknown>> | undefined;
-    if (!skills) return '{}';
+    const system = getActorSystem(actor);
+    const skillsRaw: unknown = system['skills'];
+    if (!skillsRaw || typeof skillsRaw !== 'object') return '{}';
+    assertType<Record<string, Record<string, unknown>>>(skillsRaw);
+    const skills = skillsRaw;
 
     const snapshot: Record<string, unknown> = {};
     for (const [key, skill] of Object.entries(skills)) {
-        const advance = skill.advance as number;
-        const entries = skill.entries as Array<Record<string, unknown>> | undefined;
-        const trainedEntries = entries?.filter((e) => (e.advance as number) > 0);
+        const advanceRaw: unknown = skill['advance'];
+        const advance = typeof advanceRaw === 'number' ? advanceRaw : 0;
+        const entriesRaw: unknown = skill['entries'];
+        if (Array.isArray(entriesRaw)) assertType<Array<Record<string, unknown>>>(entriesRaw);
+        const entries: Array<Record<string, unknown>> | undefined = Array.isArray(entriesRaw) ? entriesRaw : undefined;
+        const trainedEntries = entries?.filter((e) => {
+            const adv: unknown = e['advance'];
+            return typeof adv === 'number' && adv > 0;
+        });
 
         if (advance > 0 || (trainedEntries?.length ?? 0) > 0) {
-            const entry: Record<string, unknown> = { advance, label: skill.label };
+            const entry: Record<string, unknown> = { advance, label: skill['label'] };
             if (trainedEntries?.length) {
-                entry.entries = trainedEntries.map((e) => ({
-                    label: e.label,
-                    advance: e.advance,
+                entry['entries'] = trainedEntries.map((e) => ({
+                    label: e['label'],
+                    advance: e['advance'],
                 }));
             }
             snapshot[key] = entry;
@@ -116,46 +152,48 @@ function buildSkillsSnapshot(actor: Actor): string {
 }
 
 function buildItemsSnapshot(actor: Actor, itemType: string): string {
-    const items = (actor as unknown as { items: Collection<Item> }).items
-        .filter((i: Item) => i.type === itemType);
-    if (items.length === 0) return '[]';
+    const allItems = Array.from(getActorItems(actor)).filter((i) => i.type === itemType);
+    if (allItems.length === 0) return '[]';
 
-    return JSON.stringify(items.map((item: Item) => {
-        const sys = (item as unknown as { system: Record<string, unknown> }).system;
-        const entry: Record<string, unknown> = { name: item.name };
+    return JSON.stringify(
+        allItems.map((item) => {
+            const sys = getItemSystem(item);
+            const entry: Record<string, unknown> = { name: item.name };
 
-        if (itemType === 'talent') {
-            entry.tier = sys.tier;
-            entry.specialization = sys.specialization;
-            entry.benefit = sys.benefit;
-            entry.cost = sys.cost;
-        } else if (itemType === 'psychicPower') {
-            entry.discipline = sys.discipline;
-            entry.prCost = sys.prCost;
-            entry.effect = sys.effect;
-            entry.sustained = sys.sustained;
-        } else if (itemType === 'gear') {
-            entry.category = sys.category;
-            entry.weight = sys.weight;
-            entry.equipped = sys.equipped;
-            entry.effect = sys.effect;
-        } else if (itemType === 'weapon') {
-            entry.class = sys.class;
-            entry.type = sys.type;
-            entry.equipped = sys.equipped;
-            const dmg = sys.damage as Record<string, unknown> | undefined;
-            if (dmg) {
-                entry.damage = dmg.damage;
-                entry.damageType = dmg.damageType;
-                entry.penetration = dmg.penetration;
+            if (itemType === 'talent') {
+                entry['tier'] = sys['tier'];
+                entry['specialization'] = sys['specialization'];
+                entry['benefit'] = sys['benefit'];
+                entry['cost'] = sys['cost'];
+            } else if (itemType === 'psychicPower') {
+                entry['discipline'] = sys['discipline'];
+                entry['prCost'] = sys['prCost'];
+                entry['effect'] = sys['effect'];
+                entry['sustained'] = sys['sustained'];
+            } else if (itemType === 'gear') {
+                entry['category'] = sys['category'];
+                entry['weight'] = sys['weight'];
+                entry['equipped'] = sys['equipped'];
+                entry['effect'] = sys['effect'];
+            } else if (itemType === 'weapon') {
+                entry['class'] = sys['class'];
+                entry['type'] = sys['type'];
+                entry['equipped'] = sys['equipped'];
+                const dmgRaw: unknown = sys['damage'];
+                if (dmgRaw !== null && typeof dmgRaw === 'object') {
+                    assertType<Record<string, unknown>>(dmgRaw);
+                    entry['damage'] = dmgRaw['damage'];
+                    entry['damageType'] = dmgRaw['damageType'];
+                    entry['penetration'] = dmgRaw['penetration'];
+                }
+            } else if (itemType === 'armour') {
+                entry['equipped'] = sys['equipped'];
+                entry['armourPoints'] = sys['armourPoints'];
             }
-        } else if (itemType === 'armour') {
-            entry.equipped = sys.equipped;
-            entry.armourPoints = sys.armourPoints;
-        }
 
-        return entry;
-    }));
+            return entry;
+        }),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,27 +210,26 @@ interface ReconcileResult {
  * Compare Foundry actor data against Kanka entity attributes.
  * Returns what needs to go in each direction and any conflicts.
  */
-function reconcileFields(
-    actor: Actor,
-    kankaAttrs: KankaApiAttribute[],
-): ReconcileResult {
-    const system = (actor as unknown as { system: Record<string, unknown> }).system;
+function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): ReconcileResult {
+    const system = getActorSystem(actor);
     const toKanka = new Map<string, string>();
     const toFoundry: Record<string, unknown> = {};
     const conflicts: string[] = [];
 
     // --- Characteristics ---
-    const chars = system.characteristics as Record<string, Record<string, unknown>> | undefined;
+    const charsRaw: unknown = system['characteristics'];
+    let chars: Record<string, Record<string, unknown>> | undefined;
+    if (charsRaw !== null && typeof charsRaw === 'object') {
+        assertType<Record<string, Record<string, unknown>>>(charsRaw);
+        chars = charsRaw;
+    }
     if (chars) {
         for (const [kankaName, foundryKey] of Object.entries(CHARACTERISTIC_MAP)) {
-            const foundryVal = chars[foundryKey]?.base;
+            const foundryVal = chars[foundryKey]?.['base'];
             const kankaVal = kankaAttrValue(kankaAttrs, kankaName);
 
             if (isEmpty(foundryVal) && !isEmpty(kankaVal)) {
-                if (!toFoundry.characteristics) toFoundry.characteristics = {};
-                (toFoundry.characteristics as Record<string, unknown>)[foundryKey] = {
-                    base: Number(kankaVal),
-                };
+                setNestedField(toFoundry, 'characteristics', foundryKey, { base: Number(kankaVal) });
             } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
                 toKanka.set(kankaName, String(foundryVal));
             } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
@@ -200,17 +237,14 @@ function reconcileFields(
             }
 
             // Advances
-            const foundryAdv = chars[foundryKey]?.advance;
+            const foundryAdv = chars[foundryKey]?.['advance'];
             const kankaAdv = kankaAttrValue(kankaAttrs, `${kankaName}_advance`);
             if (isEmpty(foundryAdv) && !isEmpty(kankaAdv)) {
-                if (!toFoundry.characteristics) toFoundry.characteristics = {};
-                const existing = (toFoundry.characteristics as Record<string, unknown>)[foundryKey] as Record<string, unknown> | undefined;
-                if (existing) {
-                    existing.advance = Number(kankaAdv);
+                const existing: unknown = getNestedField(toFoundry, 'characteristics', foundryKey);
+                if (existing !== null && typeof existing === 'object') {
+                    Reflect.set(existing, 'advance', Number(kankaAdv));
                 } else {
-                    (toFoundry.characteristics as Record<string, unknown>)[foundryKey] = {
-                        advance: Number(kankaAdv),
-                    };
+                    setNestedField(toFoundry, 'characteristics', foundryKey, { advance: Number(kankaAdv) });
                 }
             } else if (!isEmpty(foundryAdv) && isEmpty(kankaAdv)) {
                 toKanka.set(`${kankaName}_advance`, String(foundryAdv));
@@ -227,9 +261,10 @@ function reconcileFields(
 
         if (isEmpty(foundryVal) && !isEmpty(kankaVal)) {
             const parts = foundryPath.split('.');
-            if (parts.length === 2) {
-                if (!toFoundry[parts[0]]) toFoundry[parts[0]] = {};
-                (toFoundry[parts[0]] as Record<string, unknown>)[parts[1]] = Number(kankaVal);
+            const p0 = parts[0];
+            const p1 = parts[1];
+            if (parts.length === 2 && p0 !== undefined && p1 !== undefined) {
+                setNestedField(toFoundry, p0, p1, Number(kankaVal));
             } else {
                 toFoundry[foundryPath] = Number(kankaVal);
             }
@@ -241,15 +276,19 @@ function reconcileFields(
     }
 
     // --- Bio ---
-    const bio = system.bio as Record<string, unknown> | undefined;
+    const bioRaw: unknown = system['bio'];
+    let bio: Record<string, unknown> | undefined;
+    if (bioRaw !== null && typeof bioRaw === 'object') {
+        assertType<Record<string, unknown>>(bioRaw);
+        bio = bioRaw;
+    }
     if (bio) {
         for (const [foundryKey, kankaName] of Object.entries(BIO_MAP)) {
             const foundryVal = bio[foundryKey];
             const kankaVal = kankaAttrValue(kankaAttrs, kankaName);
 
             if (isEmpty(foundryVal) && !isEmpty(kankaVal)) {
-                if (!toFoundry.bio) toFoundry.bio = {};
-                (toFoundry.bio as Record<string, unknown>)[foundryKey] = kankaVal;
+                setNestedField(toFoundry, 'bio', foundryKey, kankaVal);
             } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
                 toKanka.set(kankaName, String(foundryVal));
             } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
@@ -259,15 +298,19 @@ function reconcileFields(
     }
 
     // --- Origin Path ---
-    const origin = system.originPath as Record<string, unknown> | undefined;
+    const originRaw: unknown = system['originPath'];
+    let origin: Record<string, unknown> | undefined;
+    if (originRaw !== null && typeof originRaw === 'object') {
+        assertType<Record<string, unknown>>(originRaw);
+        origin = originRaw;
+    }
     if (origin) {
         for (const [foundryKey, kankaName] of Object.entries(ORIGIN_MAP)) {
             const foundryVal = origin[foundryKey];
             const kankaVal = kankaAttrValue(kankaAttrs, kankaName);
 
             if (isEmpty(foundryVal) && !isEmpty(kankaVal)) {
-                if (!toFoundry.originPath) toFoundry.originPath = {};
-                (toFoundry.originPath as Record<string, unknown>)[foundryKey] = kankaVal;
+                setNestedField(toFoundry, 'originPath', foundryKey, kankaVal);
             } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
                 toKanka.set(kankaName, String(foundryVal));
             } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
@@ -288,7 +331,8 @@ function reconcileFields(
 
     for (const key of SNAPSHOT_KEYS) {
         const kankaVal = kankaAttrValue(kankaAttrs, key);
-        const foundryVal = snapshotBuilders[key]();
+        const builder = snapshotBuilders[key];
+        const foundryVal = builder ? builder() : '{}';
         const foundryEmpty = foundryVal === '{}' || foundryVal === '[]';
         const kankaEmpty = isEmpty(kankaVal) || kankaVal === '{}' || kankaVal === '[]';
 
@@ -303,6 +347,20 @@ function reconcileFields(
         }
     }
 
+    // --- Root string fields ---
+    for (const [foundryKey, kankaName] of Object.entries(ROOT_STRING_MAP)) {
+        const foundryVal = system[foundryKey];
+        const kankaVal = kankaAttrValue(kankaAttrs, kankaName);
+
+        if (isEmpty(foundryVal) && !isEmpty(kankaVal)) {
+            toFoundry[foundryKey] = kankaVal;
+        } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
+            toKanka.set(kankaName, String(foundryVal));
+        } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
+            conflicts.push(`${kankaName}: Foundry="${foundryVal}", Kanka="${kankaVal}"`);
+        }
+    }
+
     return { toKanka, toFoundry, conflicts };
 }
 
@@ -310,7 +368,7 @@ function reconcileFields(
  * Check if a Foundry actor image path is a real, accessible image.
  * Verifies local paths actually exist by fetching them.
  */
-async function hasFoundryImage(actor: Actor): Promise<boolean> {
+async function _hasFoundryImage(actor: Actor): Promise<boolean> {
     const img = actor.img;
     if (!img || img === 'icons/svg/mystery-man.svg' || img === '') return false;
 
@@ -330,7 +388,7 @@ async function hasFoundryImage(actor: Actor): Promise<boolean> {
  * Download an image via authenticated Kanka API and save it locally to Foundry.
  * Returns the local path (e.g., "assets/portraits/dalvor_rech.webp").
  */
-async function downloadKankaImage(imageUrl: string, actorName: string): Promise<string | null> {
+async function _downloadKankaImage(imageUrl: string, actorName: string): Promise<string | null> {
     try {
         const response = await fetch(imageUrl, { mode: 'cors', credentials: 'omit' });
         if (!response.ok) return null;
@@ -351,8 +409,9 @@ async function downloadKankaImage(imageUrl: string, actorName: string): Promise<
             logError(`Failed to save image locally: ${uploadResp.statusText}`);
             return null;
         }
-        const result = (await uploadResp.json()) as { path?: string };
-        return result.path ?? `assets/portraits/${fileName}`;
+        const resultRaw: unknown = await uploadResp.json();
+        const path: unknown = resultRaw !== null && typeof resultRaw === 'object' ? Reflect.get(resultRaw, 'path') : undefined;
+        return typeof path === 'string' ? path : `assets/portraits/${fileName}`;
     } catch (error) {
         logError(`Failed to download Kanka image for ${actorName}`, error);
         return null;
@@ -371,16 +430,11 @@ function isLocalImage(img: string): boolean {
  * Same logic as field reconciliation: fill empty from the other, warn on conflict.
  * Images pulled from Kanka are saved locally to assets/portraits/ to avoid CORS.
  */
-async function reconcileImage(
-    actor: Actor,
-    campaignId: KankaApiId,
-    kankaEntityId: KankaApiEntityId,
-    kankaChildId: KankaApiId,
-): Promise<void> {
+async function reconcileImage(actor: Actor, campaignId: KankaApiId, kankaEntityId: KankaApiEntityId, _kankaChildId: KankaApiId): Promise<void> {
     // Fetch entity data to get the current Kanka portrait
     let kankaEntity: { child?: { has_custom_image?: boolean; image_full?: string } };
     try {
-        kankaEntity = await api.getEntity(campaignId, kankaEntityId) as typeof kankaEntity;
+        kankaEntity = await api.getEntity(campaignId, kankaEntityId);
     } catch (error) {
         logError(`Failed to fetch Kanka entity for image check on ${actor.name}`, error);
         return;
@@ -412,7 +466,7 @@ async function reconcileImage(
     }
 
     // Sync token image (from Kanka entity asset named "token")
-    const currentActor = (game as Game).actors?.get(actor.id ?? '') ?? actor;
+    const currentActor = getGameActors()?.get(actor.id ?? '') ?? actor;
     await syncTokenImage(currentActor, campaignId, kankaEntityId, portraitChanged);
 }
 
@@ -421,9 +475,24 @@ async function reconcileImage(
  * Fills empty fields in both directions, warns on conflicts.
  */
 async function reconcileActor(actor: Actor): Promise<void> {
-    const kankaEntityId = actor.getFlag('kanka-foundry', 'kankaEntityId') as KankaApiEntityId | undefined;
-    const kankaChildId = actor.getFlag('kanka-foundry', 'kankaChildId') as KankaApiId | undefined;
-    const campaignId = actor.getFlag('kanka-foundry', 'campaign') as KankaApiId | undefined;
+    const kankaEntityIdRaw: unknown = getActorFlag(actor, 'kankaEntityId');
+    let kankaEntityId: KankaApiEntityId | undefined;
+    if (kankaEntityIdRaw !== undefined) {
+        assertType<KankaApiEntityId>(kankaEntityIdRaw);
+        kankaEntityId = kankaEntityIdRaw;
+    }
+    const kankaChildIdRaw: unknown = getActorFlag(actor, 'kankaChildId');
+    let kankaChildId: KankaApiId | undefined;
+    if (kankaChildIdRaw !== undefined) {
+        assertType<KankaApiId>(kankaChildIdRaw);
+        kankaChildId = kankaChildIdRaw;
+    }
+    const campaignIdRaw: unknown = getActorFlag(actor, 'campaign');
+    let campaignId: KankaApiId | undefined;
+    if (campaignIdRaw !== undefined) {
+        assertType<KankaApiId>(campaignIdRaw);
+        campaignId = campaignIdRaw;
+    }
     if (!kankaEntityId || !kankaChildId || !campaignId) return;
 
     let kankaAttrs: KankaApiAttribute[];
@@ -464,7 +533,7 @@ async function reconcileActor(actor: Actor): Promise<void> {
     // Pull to Foundry
     if (Object.keys(toFoundry).length > 0) {
         try {
-            await actor.update({ system: toFoundry } as Record<string, unknown>);
+            await actor.update({ system: toFoundry });
             logInfo(`Reconciled ${Object.keys(toFoundry).length} field(s) Kanka → Foundry for ${actor.name}`);
         } catch (error) {
             logError(`Failed to update Foundry actor ${actor.name}`, error);
@@ -491,9 +560,7 @@ export async function reconcileAllActors(): Promise<void> {
     if (!game.user?.isGM) return;
     if (!(game.settings?.get('kanka-foundry', 'syncBackActors') ?? false)) return;
 
-    const actors = (game as Game).actors?.filter(
-        (a: Actor) => a.getFlag('kanka-foundry', 'kankaEntityId') !== undefined,
-    ) ?? [];
+    const actors = getGameActors()?.filter((a: Actor) => getActorFlag(a, 'kankaEntityId') !== undefined) ?? [];
 
     if (actors.length === 0) return;
 
@@ -513,8 +580,18 @@ function scheduleActorSync(actor: Actor, _syncItems: boolean): void {
     if (!game.user?.isGM) return;
     if (!(game.settings?.get('kanka-foundry', 'syncBackActors') ?? false)) return;
 
-    const kankaEntityId = actor.getFlag('kanka-foundry', 'kankaEntityId') as KankaApiEntityId | undefined;
-    const campaignId = actor.getFlag('kanka-foundry', 'campaign') as KankaApiId | undefined;
+    const kankaEntityIdRaw2: unknown = getActorFlag(actor, 'kankaEntityId');
+    let kankaEntityId: KankaApiEntityId | undefined;
+    if (kankaEntityIdRaw2 !== undefined) {
+        assertType<KankaApiEntityId>(kankaEntityIdRaw2);
+        kankaEntityId = kankaEntityIdRaw2;
+    }
+    const campaignIdRaw2: unknown = getActorFlag(actor, 'campaign');
+    let campaignId: KankaApiId | undefined;
+    if (campaignIdRaw2 !== undefined) {
+        assertType<KankaApiId>(campaignIdRaw2);
+        campaignId = campaignIdRaw2;
+    }
     if (!kankaEntityId || !campaignId) return;
 
     const key = String(kankaEntityId);
@@ -523,7 +600,7 @@ function scheduleActorSync(actor: Actor, _syncItems: boolean): void {
 
     const timer = setTimeout(async () => {
         pendingTimers.delete(key);
-        const currentActor = (game as Game).actors?.get(actor.id!) ?? actor;
+        const currentActor = actor.id ? (getGameActors()?.get(actor.id) ?? actor) : actor;
         await reconcileActor(currentActor);
     }, DEBOUNCE_MS);
 
@@ -531,12 +608,22 @@ function scheduleActorSync(actor: Actor, _syncItems: boolean): void {
 }
 
 function handleActorUpdate(actor: Actor, changes: Record<string, unknown>): void {
-    if (!changes.system && !changes.name && !changes.img) return;
+    if (!changes['system'] && !changes['name'] && !changes['img']) return;
 
     // If portrait changed, re-sync token
-    if (changes.img) {
-        const eid = actor.getFlag('kanka-foundry', 'kankaEntityId') as KankaApiEntityId | undefined;
-        const cid = actor.getFlag('kanka-foundry', 'campaign') as KankaApiId | undefined;
+    if (changes['img']) {
+        const eidRaw: unknown = getActorFlag(actor, 'kankaEntityId');
+        let eid: KankaApiEntityId | undefined;
+        if (eidRaw !== undefined) {
+            assertType<KankaApiEntityId>(eidRaw);
+            eid = eidRaw;
+        }
+        const cidRaw: unknown = getActorFlag(actor, 'campaign');
+        let cid: KankaApiId | undefined;
+        if (cidRaw !== undefined) {
+            assertType<KankaApiId>(cidRaw);
+            cid = cidRaw;
+        }
         if (eid && cid) {
             syncTokenImage(actor, cid, eid, true);
         }
@@ -560,13 +647,25 @@ function handleJournalUpdate(entry: JournalEntry, changes: Record<string, unknow
     if (!game.user?.isGM) return;
     if (!(game.settings?.get('kanka-foundry', 'syncBackJournals') ?? false)) return;
 
-    const kankaEntityId = entry.getFlag('kanka-foundry', 'id');
-    const campaignId = entry.getFlag('kanka-foundry', 'campaign');
-    const snapshot = entry.getFlag('kanka-foundry', 'snapshot') as Record<string, unknown> | undefined;
+    const kankaEntityId = getEntryFlag(entry, 'id');
+    const campaignIdRaw3: unknown = getEntryFlag(entry, 'campaign');
+    let campaignId: KankaApiId | undefined;
+    if (campaignIdRaw3 !== undefined) {
+        assertType<KankaApiId>(campaignIdRaw3);
+        campaignId = campaignIdRaw3;
+    }
+    const snapshotRaw: unknown = getEntryFlag(entry, 'snapshot');
+    let snapshot: Record<string, unknown> | undefined;
+    if (snapshotRaw !== null && typeof snapshotRaw === 'object') {
+        assertType<Record<string, unknown>>(snapshotRaw);
+        snapshot = snapshotRaw;
+    }
     if (!kankaEntityId || !campaignId || !snapshot) return;
-    if (changes.name === undefined) return;
+    if (changes['name'] === undefined) return;
 
-    const childId = snapshot.id as KankaApiId;
+    const childIdRaw: unknown = snapshot['id'];
+    assertType<KankaApiId>(childIdRaw);
+    const childId: KankaApiId = childIdRaw;
     const key = `journal-${String(kankaEntityId)}`;
     const existingTimer = pendingTimers.get(key);
     if (existingTimer) clearTimeout(existingTimer);
@@ -574,7 +673,8 @@ function handleJournalUpdate(entry: JournalEntry, changes: Record<string, unknow
     const timer = setTimeout(async () => {
         pendingTimers.delete(key);
         try {
-            await api.updateCharacter(campaignId as KankaApiId, childId, { name: changes.name });
+            assertType<KankaApiId>(campaignId);
+            await api.updateCharacter(campaignId, childId, { name: changes['name'] });
             logInfo('Synced journal name change to Kanka');
         } catch (error) {
             logError('Failed to sync journal changes to Kanka', error);

@@ -1,5 +1,5 @@
-import type { KankaApiEntity, KankaApiId, KankaApiModuleType, KankaApiOrganisation } from '../../types/kanka';
 import api from '..';
+import type { KankaApiEntity, KankaApiId, KankaApiModuleType, KankaApiOrganisation } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 
@@ -8,7 +8,7 @@ export default class OrganisationTypeLoader extends AbstractTypeLoader<KankaApiO
         return 'organisation';
     }
 
-    public async createReferenceCollection(
+    public override async createReferenceCollection(
         campaignId: KankaApiId,
         entity: KankaApiOrganisation,
         lookup: KankaApiEntity[] = [],
@@ -16,8 +16,8 @@ export default class OrganisationTypeLoader extends AbstractTypeLoader<KankaApiO
         const collection = await super.createReferenceCollection(campaignId, entity, lookup);
 
         await Promise.all([
-            ...(entity.locations ?? []).map((id) => collection.addById(id, 'location')),
-            ...entity.members.map((member) => collection.addById(member.character_id, 'character')),
+            ...(entity.locations ?? []).map(async (id) => collection.addById(id, 'location')),
+            ...entity.members.map(async (member) => collection.addById(member.character_id, 'character')),
         ]);
 
         return collection;

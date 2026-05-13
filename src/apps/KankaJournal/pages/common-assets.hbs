@@ -17,12 +17,19 @@
                         {{else}}
                             <td class="thumb -large">{{ kankaFileIcon this.metadata.type }}</td>
                         {{/if}}
-                            <td><a href="{{this._url}}" download><i class="fa-solid fa-download"></i> {{ this.name }}</a></td>
+                            <td>
+                                <a href="{{this._url}}" download><i class="fa-solid fa-download"></i> {{ this.name }}</a>
+                                <div><small>{{ this.metadata.type }}</small></div>
+                                <div><small>{{ this.metadata.path }}</small></div>
+                            </td>
                             <td>{{ kankaFileSize this.metadata.size }}</td>
                     {{else if this._link}}
                         <!-- Link -->
                         <td class="thumb"><i class="fas {{ ifThen this.metadata.icon this.metadata.icon  "fa-link" }} fw"></i></td>
-                        <td><a href="{{ this.metadata.url }}" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> {{ this.name }}</a></td>
+                        <td>
+                            <a href="{{ this.metadata.url }}" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> {{ this.name }}</a>
+                            <div><small>{{ this.metadata.url }}</small></div>
+                        </td>
                         <td></td>
                     {{else if this._alias}}
                         <!-- Alias -->

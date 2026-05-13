@@ -1,16 +1,5 @@
-import type {
-    KankaApiAttribute,
-    KankaApiCharacter,
-    KankaApiEntityId,
-    KankaApiId,
-} from '../types/kanka';
-import {
-    BIO_MAP,
-    CHARACTERISTIC_MAP,
-    ORIGIN_MAP,
-    ROOT_STRING_MAP,
-    STAT_MAP,
-} from './actorAttributeMaps';
+import type { KankaApiAttribute, KankaApiCharacter, KankaApiEntityId, KankaApiId } from '../types/kanka';
+import { BIO_MAP, CHARACTERISTIC_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_MAP } from './actorAttributeMaps';
 
 function getAttributeValue(attributes: KankaApiAttribute[], name: string): number | null {
     const attr = attributes.find((a) => a.name === name);
@@ -42,11 +31,16 @@ function buildSystemStats(attributes: KankaApiAttribute[]): Record<string, unkno
 
         const parts = foundryPath.split('.');
         if (parts.length === 2) {
-            const [group, field] = parts;
+            const group = parts[0];
+            const field = parts[1];
+            if (!group || !field) continue;
             if (!stats[group] || typeof stats[group] !== 'object') {
                 stats[group] = {};
             }
-            (stats[group] as Record<string, unknown>)[field] = value;
+            const groupObj = stats[group];
+            if (groupObj !== null && typeof groupObj === 'object') {
+                Reflect.set(groupObj, field, value);
+            }
         } else {
             stats[foundryPath] = value;
         }
@@ -61,13 +55,7 @@ function buildSystemStats(attributes: KankaApiAttribute[]): Record<string, unkno
  * registers all actor types in this shape; bare kinds like 'npc' yield a
  * "broken empty default" sheet because no DataModel matches.
  */
-function determineActorType(
-    _entity: KankaApiCharacter,
-    entityTags: string[],
-    defaultKind: string,
-    pcTags: string[],
-    gameSystem: string,
-): string {
+function determineActorType(_entity: KankaApiCharacter, entityTags: string[], defaultKind: string, pcTags: string[], gameSystem: string): string {
     const lowerTags = entityTags.map((t) => t.toLowerCase());
     const kind = pcTags.some((tag) => lowerTags.includes(tag.toLowerCase())) ? 'character' : defaultKind;
     return `${gameSystem}-${kind}`;
@@ -76,7 +64,7 @@ function determineActorType(
 /**
  * Create Foundry Actor data from a Kanka character entity.
  */
-export function createActorData(
+function createActorData(
     entity: KankaApiCharacter,
     entityTags: string[],
     campaignId: KankaApiId,
@@ -95,46 +83,47 @@ export function createActorData(
         characteristics,
     };
 
-    const originPath = Object.fromEntries(
+    const originPath: Record<string, string> = Object.fromEntries(
         Object.entries(ORIGIN_MAP)
-            .map(([foundryKey, kankaName]) => [foundryKey, getStringAttribute(attributes, kankaName)])
+            .map(([foundryKey, kankaName]): [string, string] => [foundryKey, getStringAttribute(attributes, kankaName)])
             .filter(([, value]) => value !== ''),
     );
 
     if (Object.keys(originPath).length > 0) {
-        system.originPath = originPath;
+        system['originPath'] = originPath;
     }
 
-    const faction = getStringAttribute(attributes, ROOT_STRING_MAP.faction);
+    const faction = getStringAttribute(attributes, ROOT_STRING_MAP['faction'] ?? '');
 
     if (actorType.endsWith('-character')) {
         const appearanceTraits = entity.traits?.filter((t) => t.section === 'appearance') ?? [];
         const personalityTraits = entity.traits?.filter((t) => t.section === 'personality') ?? [];
 
-        system.bio = {
-            gender: getStringAttribute(attributes, BIO_MAP.gender) || entity.sex || '',
-            age: getStringAttribute(attributes, BIO_MAP.age) || (entity.age != null ? String(entity.age) : ''),
-            build: getStringAttribute(attributes, BIO_MAP.build) || appearanceTraits.find((t) => t.name.toLowerCase() === 'build')?.entry || '',
-            hair: getStringAttribute(attributes, BIO_MAP.hair) || appearanceTraits.find((t) => t.name.toLowerCase() === 'hair')?.entry || '',
-            eyes: getStringAttribute(attributes, BIO_MAP.eyes) || appearanceTraits.find((t) => t.name.toLowerCase() === 'eyes')?.entry || '',
-            complexion: getStringAttribute(attributes, BIO_MAP.complexion) || appearanceTraits.find((t) => t.name.toLowerCase() === 'complexion')?.entry || '',
-            quirks: getStringAttribute(attributes, BIO_MAP.quirks) || personalityTraits.map((t) => `${t.name}: ${t.entry}`).join('; '),
-            superstition: getStringAttribute(attributes, BIO_MAP.superstition),
-            mementos: getStringAttribute(attributes, BIO_MAP.mementos),
-            playerName: getStringAttribute(attributes, BIO_MAP.playerName),
+        system['bio'] = {
+            gender: getStringAttribute(attributes, BIO_MAP['gender'] ?? '') || entity.sex || '',
+            age: getStringAttribute(attributes, BIO_MAP['age'] ?? '') || (entity.age != null ? String(entity.age) : ''),
+            build: getStringAttribute(attributes, BIO_MAP['build'] ?? '') || appearanceTraits.find((t) => t.name.toLowerCase() === 'build')?.entry || '',
+            hair: getStringAttribute(attributes, BIO_MAP['hair'] ?? '') || appearanceTraits.find((t) => t.name.toLowerCase() === 'hair')?.entry || '',
+            eyes: getStringAttribute(attributes, BIO_MAP['eyes'] ?? '') || appearanceTraits.find((t) => t.name.toLowerCase() === 'eyes')?.entry || '',
+            complexion:
+                getStringAttribute(attributes, BIO_MAP['complexion'] ?? '') || appearanceTraits.find((t) => t.name.toLowerCase() === 'complexion')?.entry || '',
+            quirks: getStringAttribute(attributes, BIO_MAP['quirks'] ?? '') || personalityTraits.map((t) => `${t.name}: ${t.entry}`).join('; '),
+            superstition: getStringAttribute(attributes, BIO_MAP['superstition'] ?? ''),
+            mementos: getStringAttribute(attributes, BIO_MAP['mementos'] ?? ''),
+            playerName: getStringAttribute(attributes, BIO_MAP['playerName'] ?? ''),
             notes: entity.entry ?? '',
         };
     } else {
         // NPC type — simpler schema
         if (entity.entry) {
-            system.description = entity.entry;
+            system['description'] = entity.entry;
         }
         const orgData = entity.organisations?.data;
-        system.faction = faction || orgData?.[0]?.role || '';
+        system['faction'] = faction || orgData?.[0]?.role || '';
     }
 
-    if (faction && !system.faction) {
-        system.faction = faction;
+    if (faction && !system['faction']) {
+        system['faction'] = faction;
     }
 
     return {
@@ -157,19 +146,15 @@ export function createActorData(
                 version: entity.updated_at,
             },
         },
-        ownership: entity.is_private
-            ? { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE }
-            : { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.LIMITED },
+        ownership: entity.is_private ? { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE } : { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.LIMITED },
     };
 }
 
 /**
  * Find an existing Foundry Actor by its Kanka entity ID.
  */
-export function findActorByKankaEntityId(entityId: KankaApiEntityId): Actor | undefined {
-    return (game as Game).actors?.find(
-        (a: Actor) => a.getFlag('kanka-foundry', 'kankaEntityId') === entityId,
-    ) ?? undefined;
+function findActorByKankaEntityId(entityId: KankaApiEntityId): Actor | undefined {
+    return game.actors?.find((a: Actor) => a.getFlag('kanka-foundry', 'kankaEntityId') === entityId) ?? undefined;
 }
 
 /**
@@ -188,10 +173,10 @@ export async function createOrUpdateActor(
 
     if (existing) {
         await existing.update({
-            name: actorData.name,
-            img: actorData.img,
-            system: actorData.system,
-            flags: actorData.flags,
+            name: actorData['name'],
+            img: actorData['img'],
+            system: actorData['system'],
+            flags: actorData['flags'],
         } as Record<string, unknown>);
         return existing;
     }

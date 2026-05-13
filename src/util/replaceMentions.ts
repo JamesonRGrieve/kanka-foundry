@@ -2,6 +2,8 @@ import { findEntryByEntityId } from '../foundry/journalEntries';
 
 type EnrichOptions = Parameters<typeof foundry.applications.ux.TextEditor.implementation.enrichHTML>[1];
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 function replaceMentions(text: string): string {
     const el = $(`<div>${text}</div>`);
 
@@ -30,25 +32,30 @@ function isObject(obj: unknown): obj is Record<string, unknown> {
 
 export default async function replaceRecursiveMentions<T>(input: T, enrichOptions: EnrichOptions = {}): Promise<T> {
     if (typeof input === 'string') {
-        return (await foundry.applications.ux.TextEditor.implementation.enrichHTML(replaceMentions(input), {
+        const enriched: unknown = await foundry.applications.ux.TextEditor.implementation.enrichHTML(replaceMentions(input), {
             ...enrichOptions,
             links: false,
-        })) as unknown as Promise<T>;
+        });
+        assertType<T>(enriched);
+        return enriched;
     }
 
     if (Array.isArray(input)) {
-        return Promise.all(input.map((value) => replaceRecursiveMentions(value, enrichOptions))) as Promise<T>;
+        const results: unknown = await Promise.all(input.map(async (item: unknown) => replaceRecursiveMentions(item, enrichOptions)));
+        assertType<T>(results);
+        return results;
     }
 
     if (isObject(input)) {
         const newObject: Record<string, unknown> = {};
         await Promise.all(
             Object.keys(input).map(async (key) => {
-                newObject[key] = await replaceRecursiveMentions(input?.[key], enrichOptions);
+                newObject[key] = await replaceRecursiveMentions(input[key], enrichOptions);
             }),
         );
 
-        return newObject as T;
+        assertType<T>(newObject);
+        return newObject;
     }
 
     return input;

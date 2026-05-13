@@ -2,20 +2,11 @@ import loaders from './api/typeLoaders';
 import type AbstractTypeLoader from './api/typeLoaders/AbstractTypeLoader';
 import { createOrUpdateActor } from './foundry/actorFactory';
 import { createJournalEntry, updateJournalEntry } from './foundry/journalEntries';
-import type {
-    KankaApiCharacter,
-    KankaApiChildEntity,
-    KankaApiEntity,
-    KankaApiId,
-    KankaApiModuleType,
-} from './types/kanka';
+import type { KankaApiCharacter, KankaApiChildEntity, KankaApiEntity, KankaApiId, KankaApiModuleType } from './types/kanka';
 
-async function handleEntity(
-    loader: AbstractTypeLoader,
-    entity: KankaApiChildEntity,
-    campaignId: KankaApiId,
-    entityLookup?: KankaApiEntity[],
-) {
+function assertType<T>(_value: unknown): asserts _value is T {}
+
+async function handleEntity(loader: AbstractTypeLoader, entity: KankaApiChildEntity, campaignId: KankaApiId, entityLookup?: KankaApiEntity[]) {
     const references = await loader.createReferenceCollection(campaignId, entity, entityLookup);
     await createJournalEntry(campaignId, loader.getType(), entity, references);
 
@@ -23,38 +14,38 @@ async function handleEntity(
     if (loader.getType() === 'character') {
         const createActors = game.settings?.get('kanka-foundry', 'createActorsForCharacters') ?? true;
         if (createActors) {
-            const defaultType = (game.settings?.get('kanka-foundry', 'defaultActorType') as string) ?? 'npc';
-            const gameSystem = (game.settings?.get('kanka-foundry', 'defaultGameSystem') as string) ?? 'dh2';
-            const pcTagsSetting = (game.settings?.get('kanka-foundry', 'pcTags') as string) ?? 'pc,acolyte';
-            const pcTags = pcTagsSetting.split(',').map((t: string) => t.trim()).filter(Boolean);
+            const defaultTypeRaw: unknown = game.settings?.get('kanka-foundry', 'defaultActorType');
+            const defaultType = typeof defaultTypeRaw === 'string' ? defaultTypeRaw : 'npc';
+            const gameSystemRaw: unknown = game.settings?.get('kanka-foundry', 'defaultGameSystem');
+            const gameSystem = typeof gameSystemRaw === 'string' ? gameSystemRaw : 'dh2';
+            const pcTagsRaw: unknown = game.settings?.get('kanka-foundry', 'pcTags');
+            const pcTagsSetting = typeof pcTagsRaw === 'string' ? pcTagsRaw : 'pc,acolyte';
+            const pcTags = pcTagsSetting
+                .split(',')
+                .map((t: string) => t.trim())
+                .filter(Boolean);
 
             // Resolve tag IDs to names from entity lookup
             const entityTags = resolveEntityTags(entity, entityLookup);
 
-            await createOrUpdateActor(
-                entity as KankaApiCharacter,
-                entityTags,
-                campaignId,
-                defaultType,
-                pcTags,
-                gameSystem,
-            );
+            assertType<KankaApiCharacter>(entity);
+            await createOrUpdateActor(entity, entityTags, campaignId, defaultType, pcTags, gameSystem);
         }
     }
 }
 
 function resolveEntityTags(entity: KankaApiChildEntity, entityLookup?: KankaApiEntity[]): string[] {
     // Tags on the character entity are tag IDs. Try to resolve names from lookup.
-    const rawTags = (entity as unknown as Record<string, unknown>).tags;
+    const rawTags: unknown = Reflect.get(entity, 'tags');
     if (!Array.isArray(rawTags)) return [];
+    const tags: unknown[] = Array.from(rawTags as unknown[]);
 
     // If we have entity lookup, try to find tag entities
     if (entityLookup) {
-        return rawTags
-            .map((tagId: number) => {
-                const tagEntity = entityLookup.find(
-                    (e) => e.module.code === 'tag' && Number(e.child_id) === tagId,
-                );
+        return tags
+            .map((tagIdRaw: unknown) => {
+                const tagId = Number(tagIdRaw);
+                const tagEntity = entityLookup.find((e) => e.module.code === 'tag' && Number(e.child_id) === tagId);
                 return tagEntity?.name;
             })
             .filter((name): name is string => !!name);
@@ -64,12 +55,7 @@ function resolveEntityTags(entity: KankaApiChildEntity, entityLookup?: KankaApiE
     return [];
 }
 
-export async function createEntity(
-    campaignId: KankaApiId,
-    type: KankaApiModuleType,
-    id: KankaApiId,
-    entityLookup?: KankaApiEntity[],
-): Promise<void> {
+export async function createEntity(campaignId: KankaApiId, type: KankaApiModuleType, id: KankaApiId, entityLookup?: KankaApiEntity[]): Promise<void> {
     const loader = loaders.get(type);
     if (!loader) throw new Error(`Missing loader for type ${String(type)}`);
     const entity = await loader.load(campaignId, id);
@@ -77,12 +63,7 @@ export async function createEntity(
     await handleEntity(loader, entity, campaignId, entityLookup);
 }
 
-export async function createEntities(
-    campaignId: KankaApiId,
-    type: KankaApiModuleType,
-    ids: KankaApiId[],
-    entityLookup?: KankaApiEntity[],
-): Promise<void> {
+export async function createEntities(campaignId: KankaApiId, type: KankaApiModuleType, ids: KankaApiId[], entityLookup?: KankaApiEntity[]): Promise<void> {
     const numberOfEntities = entityLookup?.filter((entity) => entity.module.code === type).length ?? 0;
     const expectedNumberRequests = Math.ceil(numberOfEntities / 45);
 
@@ -124,20 +105,20 @@ export async function updateEntity(entry: JournalEntry, entityLookup?: KankaApiE
     if (type === 'character') {
         const createActors = game.settings?.get('kanka-foundry', 'createActorsForCharacters') ?? true;
         if (createActors) {
-            const defaultType = (game.settings?.get('kanka-foundry', 'defaultActorType') as string) ?? 'npc';
-            const gameSystem = (game.settings?.get('kanka-foundry', 'defaultGameSystem') as string) ?? 'dh2';
-            const pcTagsSetting = (game.settings?.get('kanka-foundry', 'pcTags') as string) ?? 'pc,acolyte';
-            const pcTags = pcTagsSetting.split(',').map((t: string) => t.trim()).filter(Boolean);
+            const defaultTypeRaw2: unknown = game.settings?.get('kanka-foundry', 'defaultActorType');
+            const defaultType2 = typeof defaultTypeRaw2 === 'string' ? defaultTypeRaw2 : 'npc';
+            const gameSystemRaw2: unknown = game.settings?.get('kanka-foundry', 'defaultGameSystem');
+            const gameSystem2 = typeof gameSystemRaw2 === 'string' ? gameSystemRaw2 : 'dh2';
+            const pcTagsRaw2: unknown = game.settings?.get('kanka-foundry', 'pcTags');
+            const pcTagsSetting2 = typeof pcTagsRaw2 === 'string' ? pcTagsRaw2 : 'pc,acolyte';
+            const pcTags2 = pcTagsSetting2
+                .split(',')
+                .map((t: string) => t.trim())
+                .filter(Boolean);
             const entityTags = resolveEntityTags(entity, entityLookup);
 
-            await createOrUpdateActor(
-                entity as KankaApiCharacter,
-                entityTags,
-                campaignId,
-                defaultType,
-                pcTags,
-                gameSystem,
-            );
+            assertType<KankaApiCharacter>(entity);
+            await createOrUpdateActor(entity, entityTags, campaignId, defaultType2, pcTags2, gameSystem2);
         }
     }
 }

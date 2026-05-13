@@ -1,29 +1,44 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
-    KankaApiAbilityLink,
-    KankaApiCharacter,
-    KankaApiCharacterOrganisationLink,
-    KankaApiEntity,
-    KankaApiEntityId,
-    KankaApiId,
-    KankaApiInventory,
-    KankaApiModuleType,
-    KankaApiRelation,
-} from '../../types/kanka';
 import api from '..';
+import type { KankaApiCharacter, KankaApiEntity, KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import CharacterTypeLoader from './CharacterTypeLoader';
+import { stubAbilityLink, stubCharacterOrgLink, stubInventory, stubRelation } from './test-helpers';
 
 vi.mock('../../api/KankaApi');
 
 function createCharacter(data: Partial<KankaApiCharacter> = {}): KankaApiCharacter {
     return {
+        id: 0,
+        entity_id: 0,
+        name: 'Test Character',
+        entry: '',
+        entry_parsed: '',
+        urls: { view: '', api: '' },
+        attributes: [],
+        posts: [],
+        entity_assets: [],
+        is_private: false,
+        created_at: '',
+        created_by: 0,
+        updated_at: '',
+        updated_by: 0,
+        title: null,
+        age: null,
+        sex: null,
+        pronouns: null,
+        type: null,
+        is_dead: false,
+        traits: [],
+        is_personality_visible: false,
+        is_personality_pinned: false,
+        is_appearance_pinned: false,
         organisations: { data: [] },
         relations: [],
         inventory: [],
         entity_abilities: [],
         reminders: [],
         ...data,
-    } as KankaApiCharacter;
+    };
 }
 
 function createEntity(entityId: KankaApiEntityId, childId: KankaApiId, type: KankaApiModuleType): KankaApiEntity {
@@ -120,31 +135,26 @@ describe('CharacterTypeLoader', () => {
         });
 
         it('normalizes old single-ID fields to arrays for all characters', async () => {
-            const expectedResult = [
-                createCharacter({ race_id: 42, family_id: 10, location_id: 5 }),
-            ];
+            const expectedResult = [createCharacter({ race_id: 42, family_id: 10, location_id: 5 })];
             const loader = new CharacterTypeLoader();
             vi.mocked(api).getAllCharacters.mockResolvedValue(expectedResult);
 
             const result = await loader.loadAll(4711);
-
-            expect(result[0].races).toEqual([42]);
-            expect(result[0].families).toEqual([10]);
-            expect(result[0].locations).toEqual([5]);
+            const first = result[0];
+            expect(first).toBeDefined();
+            expect(first?.races).toEqual([42]);
+            expect(first?.families).toEqual([10]);
+            expect(first?.locations).toEqual([5]);
         });
     });
 
     describe('createReferenceCollection()', () => {
         it('includes relations from the lookup array', async () => {
             const expectedResult = createCharacter({
-                relations: [{ target_id: 1002 } as KankaApiRelation],
+                relations: [stubRelation(1002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'character'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'character'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CharacterTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -160,14 +170,10 @@ describe('CharacterTypeLoader', () => {
 
         it('includes inventory from the lookup array', async () => {
             const expectedResult = createCharacter({
-                inventory: [{ item_id: 2002 } as KankaApiInventory],
+                inventory: [stubInventory(2002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'item'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'item'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CharacterTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -183,14 +189,10 @@ describe('CharacterTypeLoader', () => {
 
         it('includes entity_abilities from the lookup array', async () => {
             const expectedResult = createCharacter({
-                entity_abilities: [{ ability_id: 2002 } as KankaApiAbilityLink],
+                entity_abilities: [stubAbilityLink(2002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'ability'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'ability'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CharacterTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -206,14 +208,10 @@ describe('CharacterTypeLoader', () => {
 
         it('includes organisations from the lookup array', async () => {
             const expectedResult = createCharacter({
-                organisations: { data: [{ organisation_id: 2002 } as KankaApiCharacterOrganisationLink] },
+                organisations: { data: [stubCharacterOrgLink(2002)] },
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'organisation'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'organisation'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CharacterTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -261,11 +259,7 @@ describe('CharacterTypeLoader', () => {
                 races: [2002],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'race'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'race'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CharacterTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -284,11 +278,7 @@ describe('CharacterTypeLoader', () => {
                 families: [2002],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'family'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'family'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CharacterTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);

@@ -5,6 +5,7 @@
  *
  * Used via type assertions in our sheet implementations until fvtt-types completes the stubs.
  */
+import type { DeepPartial } from 'fvtt-types/utils';
 
 export interface JournalSheetPageContext {
     id: string;
@@ -36,15 +37,13 @@ export interface JournalEntrySheetExt {
     goToPage(pageId: string, options?: { anchor?: string }): void;
     nextPage(): void;
     previousPage(): void;
-    getPageSheet(
-        page: JournalEntryPage.Implementation | string,
-    ): foundry.applications.sheets.journal.JournalEntryPageSheet;
+    getPageSheet(page: JournalEntryPage.Implementation | string): foundry.applications.sheets.journal.JournalEntryPageSheet;
     isPageVisible(page: JournalEntryPage.Implementation): boolean;
     _preparePageData(): Record<string, JournalSheetPageContext>;
     _preparePagesContext(context: Record<string, unknown>, options: Record<string, unknown>): Promise<void>;
     _getHeaderControls(): foundry.applications.api.ApplicationV2.HeaderControlsEntry[];
     _configureRenderParts(
-        options: Record<string, unknown>,
+        options: foundry.applications.api.HandlebarsApplicationMixin.RenderOptions,
     ): Record<string, foundry.applications.api.HandlebarsApplicationMixin.HandlebarsTemplatePart>;
     readonly rendered: boolean;
     render(options?: Record<string, unknown>): unknown;
@@ -62,9 +61,9 @@ export interface JournalEntryPageSheetExt {
     readonly isView: boolean;
     readonly isEditable: boolean;
     isV2: boolean;
-    _prepareContext(options: Record<string, unknown>): Promise<Record<string, unknown>>;
+    _prepareContext(options: DeepPartial<foundry.applications.api.ApplicationV2.RenderOptions>): Promise<Record<string, unknown>>;
     _configureRenderParts(
-        options: Record<string, unknown>,
+        options: foundry.applications.api.HandlebarsApplicationMixin.RenderOptions,
     ): Record<string, foundry.applications.api.HandlebarsApplicationMixin.HandlebarsTemplatePart>;
     _prepareContentContext(context: Record<string, unknown>, options: unknown): Promise<void>;
 }

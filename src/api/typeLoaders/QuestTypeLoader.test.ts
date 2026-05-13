@@ -1,31 +1,46 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
-    KankaApiAbilityLink,
-    KankaApiEntity,
-    KankaApiEntityId,
-    KankaApiId,
-    KankaApiInventory,
-    KankaApiModuleType,
-    KankaApiQuest,
-    KankaApiQuestElement,
-    KankaApiRelation,
-} from '../../types/kanka';
 import api from '..';
+import type { KankaApiEntity, KankaApiEntityId, KankaApiId, KankaApiModuleType, KankaApiQuest } from '../../types/kanka';
 import QuestTypeLoader from './QuestTypeLoader';
+import { stubAbilityLink, stubInventory, stubQuestElement, stubRelation } from './test-helpers';
 
 vi.mock('../../api/KankaApi');
 
 function createQuest(data: Partial<KankaApiQuest> = {}): KankaApiQuest {
     return {
+        id: 0,
+        entity_id: 0,
+        name: 'Test Quest',
+        entry: '',
+        entry_parsed: '',
+        urls: { view: '', api: '' },
+        attributes: [],
+        posts: [],
+        entity_assets: [],
+        is_private: false,
+        created_at: '',
+        created_by: 0,
+        updated_at: '',
+        updated_by: 0,
+        parents: [],
+        children: [],
         relations: [],
         inventory: [],
         entity_abilities: [],
         reminders: [],
-        parents: [],
-        children: [],
+        type: null,
+        date: null,
+        location_id: null,
+        is_completed: false,
+        elements_count: 0,
         elements: [],
+        calendar_id: null,
+        calendar_year: null,
+        calendar_month: null,
+        calendar_day: null,
+        calendar_reminder_length: null,
         ...data,
-    } as KankaApiQuest;
+    };
 }
 
 function createEntity(entityId: KankaApiEntityId, childId: KankaApiId, type: KankaApiModuleType): KankaApiEntity {
@@ -95,14 +110,10 @@ describe('QuestTypeLoader', () => {
     describe('createReferenceCollection()', () => {
         it('includes relations from the lookup array', async () => {
             const expectedResult = createQuest({
-                relations: [{ target_id: 1002 } as KankaApiRelation],
+                relations: [stubRelation(1002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'character'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'character'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -118,14 +129,10 @@ describe('QuestTypeLoader', () => {
 
         it('includes inventory from the lookup array', async () => {
             const expectedResult = createQuest({
-                inventory: [{ item_id: 2002 } as KankaApiInventory],
+                inventory: [stubInventory(2002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'item'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'item'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -141,14 +148,10 @@ describe('QuestTypeLoader', () => {
 
         it('includes entity_abilities from the lookup array', async () => {
             const expectedResult = createQuest({
-                entity_abilities: [{ ability_id: 2002 } as KankaApiAbilityLink],
+                entity_abilities: [stubAbilityLink(2002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'ability'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'ability'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -167,11 +170,7 @@ describe('QuestTypeLoader', () => {
                 parents: [2002],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'quest'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'quest'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -190,11 +189,7 @@ describe('QuestTypeLoader', () => {
                 children: [2002],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'quest'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'quest'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -213,11 +208,7 @@ describe('QuestTypeLoader', () => {
                 location_id: 2001,
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'character'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'character'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -236,11 +227,7 @@ describe('QuestTypeLoader', () => {
                 instigator_id: 1002,
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'character'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'character'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -256,14 +243,10 @@ describe('QuestTypeLoader', () => {
 
         it('includes quest elements from the lookup array', async () => {
             const expectedResult = createQuest({
-                elements: [{ entity_id: 1002 } as KankaApiQuestElement],
+                elements: [stubQuestElement(1002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'character'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'character'), createEntity(1003, 2003, 'quest')];
 
             const loader = new QuestTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);

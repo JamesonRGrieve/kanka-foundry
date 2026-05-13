@@ -4,5 +4,10 @@
         {{~>../shared/detailRowArray references=data.system.snapshot.parents type='event' label='shared.labels.parent' }}
         {{~>../shared/detailRow value=data.system.snapshot.location_id type='location' label='shared.labels.location' reference=true }}
         {{~>../shared/detailRow value=data.system.snapshot.date label='event.labels.date' }}
+        {{~>../shared/detailRow value=data.system.snapshot.calendar_id type='calendar' label='event.labels.calendar' reference=true }}
+        {{~>../shared/detailRow value=data.system.snapshot.calendar_year label='event.labels.calendarYear' }}
+        {{~>../shared/detailRow value=data.system.snapshot.calendar_month label='event.labels.calendarMonth' }}
+        {{~>../shared/detailRow value=data.system.snapshot.calendar_day label='event.labels.calendarDay' }}
+        {{~>../shared/detailRow value=data.system.snapshot.calendar_reminder_length label='shared.labels.calendarReminderLength' }}
     {{~/inline}}
 {{/../shared/overviewLayout}}

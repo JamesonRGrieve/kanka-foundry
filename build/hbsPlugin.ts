@@ -2,16 +2,20 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite';
 
-function getPartialPath(parent, partial) {
+function getPartialPath(parent: string, partial: string) {
     const parentPath = dirname(parent);
     return join(parentPath, `${partial}.partial.hbs`);
+}
+
+interface EmitFileContext {
+    emitFile(options: { type: 'asset'; fileName: string; source: string }): string;
 }
 
 export default function hbsPlugin(): Plugin {
     let config: ResolvedConfig;
     let server: ViteDevServer;
 
-    function load(this: any, id: string) {
+    function load(this: EmitFileContext, id: string) {
         const lib = config.build.lib || null;
 
         if (!id.endsWith('.hbs') || typeof lib?.entry !== 'string') {
@@ -27,7 +31,7 @@ export default function hbsPlugin(): Plugin {
 
         const partialRegex = /\{\{(#|~)?>(\.[-a-zA-Z0-9/_.]+)([^}]*)}}/g;
         const matches = Array.from(content.matchAll(partialRegex));
-        const partials = matches.map(([, , partialPath]) => getPartialPath(id, partialPath));
+        const partials = matches.flatMap(([, , partialPath]) => (partialPath !== undefined ? [getPartialPath(id, partialPath)] : []));
 
         const partialImports = partials
             .map(path => relative(dirname(id), path))
@@ -36,12 +40,13 @@ export default function hbsPlugin(): Plugin {
             .join('\n');
 
         const parsedContent = matches.reduce((content, match) => {
-            if (!match[2]) return content;
-            const partialPath = relative(inputBasePath, getPartialPath(id, match[2]));
+            const matchPath = match[2];
+            if (!matchPath) return content;
+            const partialPath = relative(inputBasePath, getPartialPath(id, matchPath));
             const partialUrl = join(config.base, 'templates', partialPath).replace(/^\//, '');
             return content.replaceAll(
-                new RegExp(`${match[2]}(}| |\n)`, 'g'),
-                (all, ending) => `${partialUrl}${ending}`,
+                new RegExp(`${matchPath}(}| |\n)`, 'g'),
+                (_all: string, ending: string) => `${partialUrl}${ending}`,
             );
         }, content);
 
@@ -49,7 +54,7 @@ export default function hbsPlugin(): Plugin {
             mkdirSync(dirname(outputPath), { recursive: true });
             writeFileSync(outputPath, parsedContent);
         } else {
-            this?.emitFile({
+            this.emitFile({
                 type: 'asset',
                 fileName: outputRelativePath,
                 source: parsedContent,
@@ -83,7 +88,8 @@ export default function hbsPlugin(): Plugin {
             const promises = modules.map(async (module) => {
                 if (!module.id || !module.file) return;
 
-                load.call(null, module.id);
+                const dummyCtx: EmitFileContext = { emitFile: () => '' };
+                load.call(dummyCtx, module.id);
             });
             await Promise.all(promises);
 

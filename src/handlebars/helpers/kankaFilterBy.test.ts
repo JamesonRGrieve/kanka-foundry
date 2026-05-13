@@ -7,7 +7,8 @@ function compile(template: string, context = {}): string {
 
 describe('kankaFilterBy()', () => {
     beforeAll(() => {
-        Handlebars.registerHelper('kankaFilterBy', kankaFilterBy as unknown as Handlebars.HelperDelegate);
+        const helper: Handlebars.HelperDelegate = kankaFilterBy;
+        Handlebars.registerHelper('kankaFilterBy', helper);
     });
 
     afterAll(() => {

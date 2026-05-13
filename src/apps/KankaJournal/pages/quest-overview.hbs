@@ -9,5 +9,10 @@ reference=true~}}
 {{~>../shared/detailRow value=data.system.snapshot.date label='quest.labels.date'~}}
 {{~>../shared/detailRow value=data.system.snapshot.is_completed label='quest.labels.completed'
 localizeValue='shared.value'~}}
+{{~>../shared/detailRow value=data.system.snapshot.calendar_id type='calendar' label='quest.labels.calendar' reference=true }}
+{{~>../shared/detailRow value=data.system.snapshot.calendar_year label='quest.labels.calendarYear' }}
+{{~>../shared/detailRow value=data.system.snapshot.calendar_month label='quest.labels.calendarMonth' }}
+{{~>../shared/detailRow value=data.system.snapshot.calendar_day label='quest.labels.calendarDay' }}
+{{~>../shared/detailRow value=data.system.snapshot.calendar_reminder_length label='shared.labels.calendarReminderLength' }}
 {{~/inline}}
 {{/../shared/overviewLayout}}

@@ -1,0 +1,200 @@
+{
+  "root": true,
+  "extends": [
+    "@typhonjs-fvtt/eslint-config-foundry.js",
+    "eslint:recommended",
+    "plugin:prettier/recommended"
+  ],
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "globals": {
+    "Tour": "readonly",
+    "fromUuidSync": "readonly",
+    "$": "readonly",
+    "source": "readonly"
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "rules": {
+    "prettier/prettier": "warn",
+    "no-shadow": ["warn", { "builtinGlobals": true, "hoist": "all", "allow": ["event", "name", "location", "origin", "parent", "prompt", "toolbar", "status", "length", "top", "close", "open", "stop", "history", "confirm", "document", "innerWidth", "innerHeight", "TextEditor", "CharacterData", "source", "Navigator", "selection", "match"] }],
+    "no-var": "warn",
+    "prefer-const": "warn",
+    "no-unused-vars": ["warn", { "args": "none", "ignoreRestSiblings": true }],
+    "no-unused-private-class-members": "warn",
+    "no-duplicate-imports": "warn",
+    "no-self-assign": "warn",
+    "no-self-compare": "warn",
+    "no-template-curly-in-string": "warn",
+    "no-unreachable-loop": "warn",
+    "no-use-before-define": ["warn", { "functions": false, "classes": false }],
+    "eqeqeq": ["warn", "always"],
+    "no-eval": "warn",
+    "no-implied-eval": "warn",
+    "no-new-func": "warn",
+    "no-throw-literal": "warn",
+    "no-useless-concat": "warn",
+    "no-useless-return": "warn",
+    "prefer-template": "warn",
+    "no-lonely-if": "warn",
+    "no-unneeded-ternary": "warn",
+    "prefer-arrow-callback": ["warn", { "allowNamedFunctions": true }],
+    "no-param-reassign": ["warn", { "props": false }],
+    "consistent-return": "warn",
+    "default-case-last": "warn",
+    "grouped-accessor-pairs": "warn",
+    "no-constructor-return": "warn",
+    "no-promise-executor-return": "warn",
+    "no-await-in-loop": "warn",
+    "require-atomic-updates": "warn",
+    "array-callback-return": "warn",
+    "no-constant-binary-expression": "warn",
+    "no-loss-of-precision": "warn",
+    "no-new-native-nonconstructor": "warn",
+    "prefer-rest-params": "warn",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-debugger": "warn",
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "LogicalExpression[operator='??'][left.type='MemberExpression'][left.object.type='ThisExpression']",
+        "message": "Don't use `??` on `this.*` — initialize the field in the DataModel schema (defineSchema/migrateData) so the value is always defined. If this is truly external data, parse via Zod and propagate the inferred type."
+      },
+      {
+        "selector": "LogicalExpression[operator='??'] > MemberExpression.left:has(MemberExpression[property.name='system'])",
+        "message": "Don't use `??` on a `.system.*` access — tighten the DataModel so the property is typed as defined. If the value really can be missing, fix the schema's default; don't paper over it at the call site."
+      },
+      {
+        "selector": "AssignmentExpression[operator='??=']",
+        "message": "`??=` hides default-initialization bugs. Set the default in the schema (defineSchema/migrateData) or at construction, not at the call site."
+      },
+      {
+        "selector": "TSUnknownKeyword:not(CatchClause TSUnknownKeyword)",
+        "message": "`unknown` should not persist past a boundary. External input → validate immediately and use the inferred type downstream. Internal data → define an interface. The only acceptable `unknown` is a parameter directly fed into a type guard on the next line; disable inline with `// eslint-disable-next-line no-restricted-syntax -- boundary: <reason>`."
+      },
+      {
+        "selector": "TSAsExpression > TSUnknownKeyword",
+        "message": "`as unknown` is a step toward `as SomethingElse`. Write a type guard instead."
+      },
+      {
+        "selector": "TSAsExpression > TSTypeReference[typeName.name='Record']",
+        "message": "`as Record<...>` casts throw away schema typing. If this is a true framework boundary (formData.object, hook payload, third-party data), validate at the boundary and propagate the inferred type. If the same Record cast appears 3+ times in one file, extract an interface."
+      },
+      {
+        "selector": "CallExpression[callee.object.object.name='ui'][callee.object.property.name='notifications'][arguments.0.type='Literal']",
+        "message": "Hardcoded string in `ui.notifications.*`. All player-facing strings must be resolved via localization keys."
+      },
+      {
+        "selector": "CallExpression[callee.object.object.name='ui'][callee.object.property.name='notifications'] > TemplateLiteral.arguments[expressions.length=0]",
+        "message": "Hardcoded template-literal in `ui.notifications.*`. All player-facing strings must be resolved via localization keys."
+      },
+      {
+        "selector": "PropertyDefinition[key.name='DEFAULT_OPTIONS'] Property[key.name='title'][value.type='Literal']",
+        "message": "Hardcoded `window.title` in `DEFAULT_OPTIONS`. Use a localization key — the sheet title is player-facing."
+      },
+      {
+        "selector": "PropertyDefinition[key.name='TABS'] Property[key.name='label'][value.type='Literal']",
+        "message": "Hardcoded `label` in `TABS`. Use a localization key — tab labels are player-facing."
+      }
+    ]
+  },
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/",
+    "build/"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.ts", "**/*.mts"],
+      "parser": "@typescript-eslint/parser",
+      "parserOptions": {
+        "ecmaVersion": "latest",
+        "sourceType": "module",
+        "project": "./tsconfig.json"
+      },
+      "plugins": ["@typescript-eslint", "import"],
+      "extends": [
+        "plugin:@typescript-eslint/recommended",
+        "plugin:@typescript-eslint/recommended-requiring-type-checking"
+      ],
+      "rules": {
+        "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": ["warn", { "args": "none", "ignoreRestSiblings": true }],
+        "no-shadow": "off",
+        "@typescript-eslint/no-shadow": ["warn", { "builtinGlobals": true, "hoist": "all", "allow": ["event", "name", "location", "origin", "parent", "prompt", "toolbar", "status", "length", "top", "close", "open", "stop", "history", "confirm", "document", "innerWidth", "innerHeight", "TextEditor", "CharacterData", "source", "Navigator", "selection", "match"] }],
+        "no-use-before-define": "off",
+        "@typescript-eslint/no-use-before-define": ["warn", { "functions": false, "classes": false }],
+        "@typescript-eslint/no-explicit-any": "warn",
+        "@typescript-eslint/no-unsafe-assignment": "warn",
+        "@typescript-eslint/no-unsafe-member-access": "warn",
+        "@typescript-eslint/no-unsafe-call": "warn",
+        "@typescript-eslint/no-unsafe-return": "warn",
+        "@typescript-eslint/no-unsafe-argument": "warn",
+        "@typescript-eslint/explicit-function-return-type": ["warn", { "allowExpressions": true, "allowTypedFunctionExpressions": true, "allowHigherOrderFunctions": true }],
+        "@typescript-eslint/consistent-type-imports": ["warn", { "prefer": "type-imports" }],
+        "import/order": ["warn", { "groups": ["builtin", "external", "internal", "parent", "sibling", "index"], "newlines-between": "never", "alphabetize": { "order": "asc" } }],
+        "@typescript-eslint/require-await": "warn",
+        "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+        "@typescript-eslint/no-floating-promises": "warn",
+        "@typescript-eslint/restrict-template-expressions": "warn",
+        "@typescript-eslint/no-base-to-string": "warn",
+        "@typescript-eslint/restrict-plus-operands": "warn",
+        "@typescript-eslint/no-misused-promises": "warn",
+        "@typescript-eslint/no-redundant-type-constituents": "warn",
+        "@typescript-eslint/unbound-method": "warn",
+        "@typescript-eslint/await-thenable": "warn",
+        "@typescript-eslint/no-unsafe-function-type": "warn",
+        "@typescript-eslint/no-unused-expressions": "warn",
+        "@typescript-eslint/no-implied-eval": "warn",
+        "@typescript-eslint/no-for-in-array": "warn",
+        "@typescript-eslint/no-non-null-assertion": "warn",
+        "@typescript-eslint/no-non-null-asserted-optional-chain": "warn",
+        "@typescript-eslint/no-confusing-non-null-assertion": "warn",
+        "@typescript-eslint/no-unnecessary-condition": "warn",
+        "@typescript-eslint/strict-boolean-expressions": ["warn", { "allowString": true, "allowNumber": true, "allowNullableObject": true, "allowNullableBoolean": false, "allowNullableString": false, "allowNullableNumber": false, "allowAny": false }],
+        "@typescript-eslint/switch-exhaustiveness-check": "warn",
+        "@typescript-eslint/no-unsafe-enum-comparison": "warn",
+        "@typescript-eslint/prefer-nullish-coalescing": ["warn", { "ignorePrimitives": { "string": true } }],
+        "@typescript-eslint/prefer-optional-chain": "warn",
+        "@typescript-eslint/no-deprecated": "warn",
+        "@typescript-eslint/no-unnecessary-boolean-literal-compare": "warn",
+        "@typescript-eslint/no-meaningless-void-operator": "warn",
+        "@typescript-eslint/prefer-includes": "warn",
+        "@typescript-eslint/prefer-string-starts-ends-with": "warn",
+        "@typescript-eslint/prefer-find": "warn",
+        "@typescript-eslint/require-array-sort-compare": ["warn", { "ignoreStringArrays": true }],
+        "@typescript-eslint/prefer-readonly": "warn",
+        "@typescript-eslint/promise-function-async": "warn",
+        "@typescript-eslint/return-await": ["warn", "in-try-catch"],
+        "@typescript-eslint/ban-ts-comment": ["warn", { "ts-expect-error": "allow-with-description", "ts-ignore": true, "ts-nocheck": true, "ts-check": false, "minimumDescriptionLength": 5 }],
+        "@typescript-eslint/naming-convention": [
+            "warn",
+            { "selector": "default", "format": ["camelCase"], "leadingUnderscore": "allow", "trailingUnderscore": "allow" },
+            { "selector": "variable", "format": ["camelCase", "UPPER_CASE", "PascalCase"], "leadingUnderscore": "allow", "trailingUnderscore": "allow" },
+            { "selector": "parameter", "format": ["camelCase", "PascalCase"], "leadingUnderscore": "allow" },
+            { "selector": "function", "format": ["camelCase", "PascalCase"] },
+            { "selector": "method", "format": ["camelCase", "PascalCase"], "leadingUnderscore": "allow" },
+            { "selector": "typeMethod", "format": ["camelCase", "PascalCase"], "leadingUnderscore": "allow" },
+            { "selector": "classicAccessor", "format": ["camelCase", "UPPER_CASE"] },
+            { "selector": "memberLike", "modifiers": ["private"], "format": ["camelCase"], "leadingUnderscore": "allow" },
+            { "selector": "classProperty", "modifiers": ["static"], "format": ["UPPER_CASE", "camelCase", "PascalCase"], "leadingUnderscore": "allow" },
+            { "selector": "typeLike", "format": ["PascalCase"] },
+            { "selector": "enumMember", "format": ["UPPER_CASE", "PascalCase"] },
+            { "selector": "objectLiteralProperty", "format": null },
+            { "selector": "typeProperty", "format": null },
+            { "selector": "import", "format": ["camelCase", "PascalCase"] }
+        ],
+        "import/no-cycle": ["warn", { "maxDepth": 4, "ignoreExternal": true }],
+        "import/no-self-import": "warn",
+        "import/no-useless-path-segments": "warn",
+        "import/no-duplicates": "warn",
+        "complexity": ["warn", 25],
+        "max-depth": ["warn", 5]
+      }
+    }
+  ]
+}

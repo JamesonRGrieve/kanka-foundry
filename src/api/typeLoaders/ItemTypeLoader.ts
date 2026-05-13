@@ -1,5 +1,5 @@
-import type { KankaApiEntity, KankaApiId, KankaApiItem, KankaApiModuleType } from '../../types/kanka';
 import api from '..';
+import type { KankaApiEntity, KankaApiId, KankaApiItem, KankaApiModuleType } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 
@@ -8,17 +8,10 @@ export default class ItemTypeLoader extends AbstractTypeLoader<KankaApiItem> {
         return 'item';
     }
 
-    public async createReferenceCollection(
-        campaignId: KankaApiId,
-        entity: KankaApiItem,
-        lookup: KankaApiEntity[] = [],
-    ): Promise<ReferenceCollection> {
+    public override async createReferenceCollection(campaignId: KankaApiId, entity: KankaApiItem, lookup: KankaApiEntity[] = []): Promise<ReferenceCollection> {
         const collection = await super.createReferenceCollection(campaignId, entity, lookup);
 
-        await Promise.all([
-            collection.addById(entity.location_id, 'location'),
-            collection.addById(entity.creator_id, 'character'),
-        ]);
+        await Promise.all([collection.addById(entity.location_id, 'location'), collection.addById(entity.creator_id, 'character')]);
 
         return collection;
     }

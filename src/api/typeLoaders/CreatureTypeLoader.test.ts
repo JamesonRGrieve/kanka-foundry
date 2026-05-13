@@ -1,30 +1,39 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
-    KankaApiAbilityLink,
-    KankaApiCreature,
-    KankaApiEntity,
-    KankaApiEntityId,
-    KankaApiId,
-    KankaApiInventory,
-    KankaApiModuleType,
-    KankaApiRelation,
-} from '../../types/kanka';
 import api from '..';
+import type { KankaApiCreature, KankaApiEntity, KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import CreatureTypeLoader from './CreatureTypeLoader';
+import { stubAbilityLink, stubInventory, stubRelation } from './test-helpers';
 
 vi.mock('../../api/KankaApi');
 
 function createCreature(data: Partial<KankaApiCreature> = {}): KankaApiCreature {
     return {
+        id: 0,
+        entity_id: 0,
+        name: 'Test Creature',
+        entry: '',
+        entry_parsed: '',
+        urls: { view: '', api: '' },
+        attributes: [],
+        posts: [],
+        entity_assets: [],
+        is_private: false,
+        created_at: '',
+        created_by: 0,
+        updated_at: '',
+        updated_by: 0,
+        parents: [],
+        children: [],
         relations: [],
         inventory: [],
         entity_abilities: [],
         reminders: [],
-        parents: [],
-        children: [],
         locations: [],
+        type: null,
+        is_extinct: false,
+        is_dead: false,
         ...data,
-    } as KankaApiCreature;
+    };
 }
 
 function createEntity(entityId: KankaApiEntityId, childId: KankaApiId, type: KankaApiModuleType): KankaApiEntity {
@@ -94,14 +103,10 @@ describe('CreatureTypeLoader', () => {
     describe('createReferenceCollection()', () => {
         it('includes relations from the lookup array', async () => {
             const expectedResult = createCreature({
-                relations: [{ target_id: 1002 } as KankaApiRelation],
+                relations: [stubRelation(1002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'character'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'character'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CreatureTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -117,14 +122,10 @@ describe('CreatureTypeLoader', () => {
 
         it('includes inventory from the lookup array', async () => {
             const expectedResult = createCreature({
-                inventory: [{ item_id: 2002 } as KankaApiInventory],
+                inventory: [stubInventory(2002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'item'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'item'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CreatureTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -140,14 +141,10 @@ describe('CreatureTypeLoader', () => {
 
         it('includes entity_abilities from the lookup array', async () => {
             const expectedResult = createCreature({
-                entity_abilities: [{ ability_id: 2002 } as KankaApiAbilityLink],
+                entity_abilities: [stubAbilityLink(2002)],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'ability'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'ability'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CreatureTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -166,11 +163,7 @@ describe('CreatureTypeLoader', () => {
                 parents: [2002],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'creature'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'creature'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CreatureTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);
@@ -189,11 +182,7 @@ describe('CreatureTypeLoader', () => {
                 children: [2002],
             });
 
-            const entities = [
-                createEntity(1001, 2001, 'location'),
-                createEntity(1002, 2002, 'creature'),
-                createEntity(1003, 2003, 'quest'),
-            ];
+            const entities = [createEntity(1001, 2001, 'location'), createEntity(1002, 2002, 'creature'), createEntity(1003, 2003, 'quest')];
 
             const loader = new CreatureTypeLoader();
             const collection = await loader.createReferenceCollection(4711, expectedResult, entities);

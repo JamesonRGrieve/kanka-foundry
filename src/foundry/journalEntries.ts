@@ -1,5 +1,7 @@
 import moduleConfig from '../../public/module.json';
 import type ReferenceCollection from '../api/ReferenceCollection';
+import type Reference from '../types/Reference';
+function assertType<T>(_value: unknown): asserts _value is T {}
 import type {
     AnyConstrainable,
     KankaApiChildEntity,
@@ -9,10 +11,9 @@ import type {
     KankaApiId,
     KankaApiModuleType,
 } from '../types/kanka';
-import type Reference from '../types/Reference';
 import isSecret from '../util/isSecret';
-import { ensureFolderPath } from './journalFolders';
 import PageFactory from './PageFactory';
+import { ensureFolderPath } from './journalFolders';
 
 const CURRENT_JOURNAL_VERSION = '000003';
 
@@ -26,8 +27,7 @@ function getOwnership(
 ): Record<string, CONST.DOCUMENT_OWNERSHIP_LEVELS> | undefined {
     const setting = game.settings?.get('kanka-foundry', 'automaticPermissions');
 
-    if (setting === 'never')
-        return currentOwnership ?? { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE };
+    if (setting === 'never') return currentOwnership ?? { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE };
     if (setting === 'initial' && currentOwnership) return currentOwnership;
 
     if (entities.every((entity) => isSecret(entity))) {
@@ -40,19 +40,8 @@ function getOwnership(
     return { ...(currentOwnership ?? {}), default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER };
 }
 
-export function findAllKankaEntries(): JournalEntry[] {
-    return game.journal?.filter((e) => !!e.getFlag('kanka-foundry', 'id')) ?? [];
-}
-
 export function findEntryByEntityId(id: KankaApiEntityId): JournalEntry | undefined {
     return game.journal?.find((e) => e.getFlag('kanka-foundry', 'id') === id) ?? undefined;
-}
-
-export function findEntryByTypeAndChildId(type: KankaApiModuleType, id: KankaApiId): JournalEntry | undefined {
-    return (
-        game.journal?.find((e) => e.getFlag('kanka-foundry', 'type') === type && e.getFlag('kanka-foundry', 'snapshot')?.id === id) ??
-        undefined
-    );
 }
 
 export function findEntriesByType(type: KankaApiModuleType): JournalEntry[] {
@@ -67,7 +56,6 @@ export function hasOutdatedEntryByEntity(entity: KankaApiEntity): boolean {
     const currentVersion = entry.getFlag('kanka-foundry', 'version');
     if (!currentVersion) return true; // Should be updated!
 
-
     return buildVersionString(entity) > currentVersion;
 }
 
@@ -78,13 +66,7 @@ function createAllPages(
     references: ReferenceCollection,
     journal?: JournalEntry,
 ): JournalEntry.CreateData['pages'] {
-    const pageFactory = new PageFactory(
-        campaignId,
-        type,
-        entity,
-        references,
-        journal,
-    );
+    const pageFactory = new PageFactory(campaignId, type, entity, references, journal);
 
     return [
         pageFactory.createEntityImagePage(),
@@ -112,20 +94,20 @@ export async function createJournalEntry(
     entity: KankaApiChildEntity | KankaApiChildEntityWithChildren,
     references: ReferenceCollection,
 ): Promise<JournalEntry> {
+    const withChildren = 'parents' in entity ? entity : undefined;
     const path =
-        [...((entity as KankaApiChildEntityWithChildren)?.parents ?? [])]
+        [...(withChildren?.parents ?? [])]
             .reverse()
             .map((id) => references.findByIdAndType(id, type))
             .filter((ref): ref is Reference => !!ref) ?? [];
 
     const folder = await ensureFolderPath(type, path);
 
-
-    return (await JournalEntry.create({
+    const created: unknown = await JournalEntry.create({
         name: entity.name,
         pages: createAllPages(campaignId, type, entity, references),
         flags: {
-            core: {
+            'core': {
                 sheetClass: `${moduleConfig.name}.KankaJournalApplication`,
             },
             'kanka-foundry': {
@@ -139,7 +121,9 @@ export async function createJournalEntry(
         },
         ownership: getOwnership([entity], undefined),
         folder: folder?.id,
-    })) as JournalEntry;
+    });
+    assertType<JournalEntry>(created);
+    return created;
 }
 
 export async function updateJournalEntry(
@@ -158,7 +142,7 @@ export async function updateJournalEntry(
         name: entry.name === oldName ? entity.name : oldName, // Keep existing journal name if it was renamed by user
         pages: createAllPages(campaignId, type, entity, references, entry),
         flags: {
-            core: {
+            'core': {
                 sheetClass: `${moduleConfig.name}.KankaJournalApplication`,
             },
             'kanka-foundry': {

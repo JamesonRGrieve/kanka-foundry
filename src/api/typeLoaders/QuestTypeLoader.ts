@@ -1,5 +1,5 @@
-import type { KankaApiEntity, KankaApiId, KankaApiModuleType, KankaApiQuest } from '../../types/kanka';
 import api from '..';
+import type { KankaApiEntity, KankaApiId, KankaApiModuleType, KankaApiQuest } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 
@@ -8,7 +8,7 @@ export default class QuestTypeLoader extends AbstractTypeLoader<KankaApiQuest> {
         return 'quest';
     }
 
-    public async createReferenceCollection(
+    public override async createReferenceCollection(
         campaignId: KankaApiId,
         entity: KankaApiQuest,
         lookup: KankaApiEntity[] = [],
@@ -18,7 +18,7 @@ export default class QuestTypeLoader extends AbstractTypeLoader<KankaApiQuest> {
         await Promise.all([
             collection.addByEntityId(entity.instigator_id),
             collection.addById(entity.location_id, 'location'),
-            ...entity.elements.map((element) => collection.addByEntityId(element.entity_id)),
+            ...entity.elements.map(async (element) => collection.addByEntityId(element.entity_id)),
         ]);
 
         return collection;

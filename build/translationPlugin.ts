@@ -3,11 +3,11 @@ import { flatten } from 'flat';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import yaml from 'js-yaml';
 import { dirname, join, relative } from 'path';
-import { Plugin } from 'vite';
+import { Plugin, ResolvedConfig, ViteDevServer } from 'vite';
 
 export default function translationPlugin(): Plugin {
-    let config;
-    let server;
+    let config: ResolvedConfig;
+    let server: ViteDevServer | undefined;
 
     return {
         name: 'yaml-plugin',
@@ -22,7 +22,11 @@ export default function translationPlugin(): Plugin {
                 return null;
             }
 
-            const inputBasePath = dirname(config.build.lib.entry);
+            const lib = config.build.lib;
+            if (!lib) throw new Error('translationPlugin requires build.lib to be configured');
+            const entry = typeof lib.entry === 'string' ? lib.entry : Object.values(lib.entry)[0];
+            if (!entry) throw new Error('translationPlugin requires build.lib.entry to be set');
+            const inputBasePath = dirname(entry);
             const inputRelativePath = relative(inputBasePath, id);
             const outputRelativePath = inputRelativePath.replace('.yml', '.json');
             const outputPath = join(config.build.outDir, outputRelativePath);

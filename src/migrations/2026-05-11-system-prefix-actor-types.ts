@@ -21,30 +21,33 @@ const TOKEN_DISPLAY_HOVER = 30;
 
 function isAlreadyPrefixed(type: string): boolean {
     if (!type.includes('-')) return false;
-    const [systemId, kind] = type.split('-');
-    return VALID_SYSTEMS.includes(systemId) && VALID_KINDS.includes(kind);
+    const parts = type.split('-');
+    const systemId = parts[0];
+    const kind = parts[1];
+    return !!systemId && !!kind && VALID_SYSTEMS.includes(systemId) && VALID_KINDS.includes(kind);
 }
 
 export default async function migrate(): Promise<void> {
-    const actors = Array.from(game.actors?.values() ?? []).filter(
-        (a: Actor) => a.getFlag('kanka-foundry', 'kankaEntityId'),
-    );
+    const actors = Array.from(game.actors?.values() ?? []).filter((a: Actor) => a.getFlag('kanka-foundry', 'kankaEntityId'));
     if (actors.length === 0) return;
 
-    const gameSystem = (game.settings?.get('kanka-foundry', 'defaultGameSystem') as string) ?? 'dh2';
+    const gameSystemRaw: unknown = game.settings?.get('kanka-foundry', 'defaultGameSystem');
+    const gameSystem = typeof gameSystemRaw === 'string' ? gameSystemRaw : 'dh2';
 
     let touched = 0;
     let failed = 0;
     for (const actor of actors) {
         const type = actor.type as string;
-        const proto = (actor as unknown as { prototypeToken?: { displayName?: number } }).prototypeToken;
-        const currentDisplayName = proto?.displayName;
+        const actorRaw: unknown = actor;
+        const protoRaw: unknown = actorRaw !== null && typeof actorRaw === 'object' ? Reflect.get(actorRaw, 'prototypeToken') : undefined;
+        const currentDisplayName: number | undefined =
+            protoRaw !== null && typeof protoRaw === 'object' ? (Reflect.get(protoRaw, 'displayName') as number | undefined) : undefined;
 
         const updates: Record<string, unknown> = {};
 
         if (!isAlreadyPrefixed(type)) {
             const kind = VALID_KINDS.includes(type) ? type : 'npc';
-            updates.type = `${gameSystem}-${kind}`;
+            updates['type'] = `${gameSystem}-${kind}`;
         }
         if (currentDisplayName !== TOKEN_DISPLAY_HOVER) {
             updates['prototypeToken.displayName'] = TOKEN_DISPLAY_HOVER;

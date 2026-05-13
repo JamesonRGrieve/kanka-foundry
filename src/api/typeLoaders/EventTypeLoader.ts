@@ -1,5 +1,5 @@
-import type { KankaApiEntity, KankaApiEvent, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import api from '..';
+import type { KankaApiEntity, KankaApiEvent, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import type ReferenceCollection from '../ReferenceCollection';
 import AbstractTypeLoader from './AbstractTypeLoader';
 
@@ -8,16 +8,14 @@ export default class EventTypeLoader extends AbstractTypeLoader<KankaApiEvent> {
         return 'event';
     }
 
-    public async createReferenceCollection(
+    public override async createReferenceCollection(
         campaignId: KankaApiId,
         entity: KankaApiEvent,
         lookup: KankaApiEntity[] = [],
     ): Promise<ReferenceCollection> {
         const collection = await super.createReferenceCollection(campaignId, entity, lookup);
 
-        await Promise.all([
-            collection.addById(entity.location_id, 'location'),
-        ]);
+        await Promise.all([collection.addById(entity.location_id, 'location')]);
 
         return collection;
     }

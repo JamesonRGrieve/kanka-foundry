@@ -1,53 +1,55 @@
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 export default async function migrate(): Promise<void> {
-    const journals = Array.from(game.journal?.values() ?? []).filter(e => e.getFlag('kanka-foundry', 'id'));
+    const journals = Array.from(game.journal?.values() ?? []).filter((e) => e.getFlag('kanka-foundry', 'id'));
 
     for (const entry of journals) {
         try {
             const type = entry.getFlag('kanka-foundry', 'type');
-            const pages = Array.from(entry.pages.values())
-                .filter(p => p.type === 'kanka-foundry.overview');
+            const pages = Array.from(entry.pages.values()).filter((p) => p.type === 'kanka-foundry.overview');
 
-            const updates = pages.map((page: JournalEntryPage) => {
-                const snapshot = (page.system as unknown as Record<string, Record<string, unknown>>)?.snapshot;
-                if (!snapshot) return null;
-                const changes: Record<string, unknown> = {};
+            const updates = pages
+                .map((page: JournalEntryPage) => {
+                    const sysRaw: unknown = page.system;
+                    const snapshotRaw: unknown = sysRaw !== null && typeof sysRaw === 'object' ? Reflect.get(sysRaw, 'snapshot') : undefined;
+                    if (!snapshotRaw || typeof snapshotRaw !== 'object') return null;
+                    assertType<Record<string, unknown>>(snapshotRaw);
+                    const snapshot = snapshotRaw;
+                    if (!snapshot) return null;
+                    const changes: Record<string, unknown> = {};
 
-                if (type === 'character') {
-                    if (!snapshot.races && snapshot.race_id != null)
-                        changes.races = [snapshot.race_id];
-                    if (!snapshot.families && snapshot.family_id != null)
-                        changes.families = [snapshot.family_id];
-                    if (!snapshot.locations && snapshot.location_id != null)
-                        changes.locations = [snapshot.location_id];
-                }
+                    if (type === 'character') {
+                        if (!snapshot['races'] && snapshot['race_id'] != null) changes['races'] = [snapshot['race_id']];
+                        if (!snapshot['families'] && snapshot['family_id'] != null) changes['families'] = [snapshot['family_id']];
+                        if (!snapshot['locations'] && snapshot['location_id'] != null) changes['locations'] = [snapshot['location_id']];
+                    }
 
-                if (type === 'organisation') {
-                    if (!snapshot.locations && snapshot.location_id != null)
-                        changes.locations = [snapshot.location_id];
-                }
+                    if (type === 'organisation') {
+                        if (!snapshot['locations'] && snapshot['location_id'] != null) changes['locations'] = [snapshot['location_id']];
+                    }
 
-                if (type === 'item') {
-                    if (snapshot.creator_id == null && snapshot.character_id != null)
-                        changes.creator_id = snapshot.character_id;
-                }
+                    if (type === 'item') {
+                        if (snapshot['creator_id'] == null && snapshot['character_id'] != null) changes['creator_id'] = snapshot['character_id'];
+                    }
 
-                if (type === 'journal') {
-                    if (snapshot.author_id == null && snapshot.character_id != null)
-                        changes.author_id = snapshot.character_id;
-                }
+                    if (type === 'journal') {
+                        if (snapshot['author_id'] == null && snapshot['character_id'] != null) changes['author_id'] = snapshot['character_id'];
+                    }
 
-                if (Object.keys(changes).length === 0) return null;
+                    if (Object.keys(changes).length === 0) return null;
 
-                return {
-                    _id: page._id,
-                    system: {
-                        snapshot: { ...snapshot, ...changes },
-                    },
-                };
-            }).filter(Boolean);
+                    return {
+                        _id: page._id,
+                        system: {
+                            snapshot: { ...snapshot, ...changes },
+                        },
+                    };
+                })
+                .filter(Boolean);
 
             if (updates.length > 0) {
-                await entry.updateEmbeddedDocuments('JournalEntryPage', updates as JournalEntryPage.UpdateData[]);
+                assertType<JournalEntryPage.UpdateData[]>(updates);
+                await entry.updateEmbeddedDocuments('JournalEntryPage', updates);
             }
         } catch (error) {
             console.error(`kanka-foundry | Migration failed for journal entry ${entry.id}:`, error);

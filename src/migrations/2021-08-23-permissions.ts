@@ -6,9 +6,9 @@ export default async function migrate(): Promise<void> {
         return;
     }
 
-    if ((permissionSetting as string) === 'false') {
+    if (String(permissionSetting) === 'false') {
         await game.settings?.set('kanka-foundry', 'automaticPermissions', 'never');
-    } else if ((permissionSetting as string) === 'true') {
+    } else if (String(permissionSetting) === 'true') {
         await game.settings?.set('kanka-foundry', 'automaticPermissions', 'initial');
     } else {
         await game.settings?.set('kanka-foundry', 'automaticPermissions', 'never');

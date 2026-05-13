@@ -5,7 +5,7 @@ function getFilterFn<T extends Record<string, unknown>>(property: string, expect
         const [, isRegex, value] = expected.match(/(regex:)?(.*)/) ?? [];
 
         if (isRegex) {
-            const regex = new RegExp(value);
+            const regex = new RegExp(value ?? '');
             return (a: T) => regex.test(String(foundry.utils.getProperty(a, property)));
         }
     }
@@ -13,12 +13,7 @@ function getFilterFn<T extends Record<string, unknown>>(property: string, expect
     return (a: T) => foundry.utils.getProperty(a, property) === expected;
 }
 
-export default function kankaFilterBy<T extends Record<string, unknown>>(
-    data: T[],
-    property: string,
-    expected: unknown,
-    invert: unknown,
-): T[] {
+export default function kankaFilterBy<T extends Record<string, unknown>>(data: T[], property: string, expected: unknown, invert: unknown): T[] {
     if (typeof property === 'object') return data;
 
     const filterFn = getFilterFn(property, expected);

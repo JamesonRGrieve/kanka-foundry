@@ -1,0 +1,76 @@
+{
+  "generatedAt": "2026-05-13T17:03:33.251Z",
+  "summary": {
+    "files": 91,
+    "any": 0,
+    "asAny": 0,
+    "tsExpectError": 0,
+    "tsIgnore": 0
+  },
+  "byDir": {
+    "api": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 23
+    },
+    "apps": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 6
+    },
+    "_root": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 4
+    },
+    "foundry": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 17
+    },
+    "handlebars": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 17
+    },
+    "migrations": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 10
+    },
+    "state": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 1
+    },
+    "types": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 3
+    },
+    "util": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0,
+      "files": 10
+    }
+  },
+  "byFile": {}
+}

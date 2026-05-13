@@ -1,0 +1,40 @@
+pnpm exec lint-staged --hide-unstaged
+
+# Biome diagnostics ratchet: total (errors+warnings) cannot rise.
+echo "[pre-commit] running biome ratchet…"
+pnpm -s biome:ratchet
+
+# Main typecheck ratchet: per-TS-code error counts under tsconfig.json cannot rise.
+# Auto-flips to hard gate (must be zero) once each code reaches 0.
+echo "[pre-commit] running typecheck ratchet…"
+pnpm -s typecheck:ratchet
+
+# ESLint warning ratchet: warning count cannot rise; errors never allowed.
+echo "[pre-commit] running eslint ratchet…"
+pnpm -s lint:ratchet
+
+# Per-rule TS-strictness ratchet: per-directory `any`/`as any`/`@ts-expect-error`/
+# `@ts-ignore` counts cannot rise. Auto-flips to strict at 0.
+echo "[pre-commit] running ts coverage ratchet…"
+pnpm -s ts:ratchet
+
+# Strict-flag tsc ratchet: tsc --noEmit -p tsconfig.strict.json per-TS-code
+# counts cannot rise. Each code auto-flips to strict at 0.
+echo "[pre-commit] running strict-flag tsc ratchet…"
+pnpm -s strict:ratchet
+
+# type-coverage ratchet: inferred-any count under --strict cannot grow.
+# Auto-flips to 100%-strict on ceiling.
+echo "[pre-commit] running type-coverage ratchet…"
+pnpm -s type-coverage:ratchet
+
+# knip ratchet: unused files/exports/types/deps per-category cannot rise.
+echo "[pre-commit] running knip ratchet…"
+pnpm -s knip:ratchet
+
+# Lockfile validator: every resolution URL must point at an allow-listed host.
+echo "[pre-commit] running lockfile-validate…"
+pnpm -s lockfile:validate
+
+echo "[pre-commit] running Vitest…"
+pnpm -s test

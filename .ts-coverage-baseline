@@ -1,0 +1,70 @@
+{
+  "strict": [
+    "any",
+    "asAny",
+    "tsExpectError",
+    "tsIgnore"
+  ],
+  "totals": {
+    "any": 0,
+    "asAny": 0,
+    "tsExpectError": 0,
+    "tsIgnore": 0
+  },
+  "byDir": {
+    "_root": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "api": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "apps": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "foundry": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "handlebars": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "migrations": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "state": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "types": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    },
+    "util": {
+      "any": 0,
+      "asAny": 0,
+      "tsExpectError": 0,
+      "tsIgnore": 0
+    }
+  }
+}

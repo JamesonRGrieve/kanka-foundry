@@ -38,290 +38,230 @@ function setToken(token: string): void {
 }
 
 export function registerSettings(): void {
-    const languages = moduleConfig.languages.reduce((map, { lang, name }) => { map[lang] = name; return map; }, {}) ?? {};
+    const languages =
+        moduleConfig.languages.reduce<Record<string, string>>((map, { lang, name }) => {
+            map[lang] = name;
+            return map;
+        }, {}) ?? {};
 
-    game.settings?.register('kanka-foundry',
-        'migrationVersion',
-        {
-            config: false,
-            type: String,
-            default: '',
+    game.settings?.register('kanka-foundry', 'migrationVersion', {
+        config: false,
+        type: String,
+        default: '',
+    });
+
+    game.settings?.register('kanka-foundry', 'baseUrl', {
+        name: getMessage('settings.baseUrl.label'),
+        hint: getMessage('settings.baseUrl.hint'),
+        scope: 'world',
+        config: true,
+        type: String,
+        default: '',
+        onChange: (value) => api.switchBaseUrl(value ?? ''),
+    });
+
+    game.settings?.register('kanka-foundry', 'accessToken', {
+        name: getMessage('settings.token.label'),
+        hint: getMessage('settings.token.hint'),
+        scope: 'client',
+        config: true,
+        type: String,
+        default: '',
+        onChange: (value) => setToken(value),
+    });
+
+    game.settings?.register('kanka-foundry', 'campaign', {
+        name: getMessage('settings.campaign.label'),
+        hint: getMessage('settings.campaign.hint'),
+        scope: 'world',
+        config: false,
+        type: String,
+        default: '',
+    });
+
+    game.settings?.register('kanka-foundry', 'importLanguage', {
+        name: getMessage('settings.locale.label'),
+        hint: getMessage('settings.locale.hint'),
+        scope: 'world',
+        config: true,
+        type: String,
+        default: '',
+        choices: {
+            ...languages,
         },
-    );
-
-    game.settings?.register('kanka-foundry',
-        'baseUrl',
-        {
-            name: getMessage('settings.baseUrl.label'),
-            hint: getMessage('settings.baseUrl.hint'),
-            scope: 'world',
-            config: true,
-            type: String,
-            default: '',
-            onChange: (value) => api.switchBaseUrl(value ?? ''),
-        },
-    );
-
-    game.settings?.register('kanka-foundry',
-        'accessToken',
-        {
-            name: getMessage('settings.token.label'),
-            hint: getMessage('settings.token.hint'),
-            scope: 'client',
-            config: true,
-            type: String,
-            default: '',
-            onChange: (value) => setToken(value),
-        },
-    );
-
-    game.settings?.register('kanka-foundry',
-        'campaign',
-        {
-            name: getMessage('settings.campaign.label'),
-            hint: getMessage('settings.campaign.hint'),
-            scope: 'world',
-            config: false,
-            type: String,
-            default: '',
-        },
-    );
-
-    game.settings?.register('kanka-foundry',
-        'importLanguage',
-        {
-            name: getMessage('settings.locale.label'),
-            hint: getMessage('settings.locale.hint'),
-            scope: 'world',
-            config: true,
-            type: String,
-            default: '',
-            choices: {
-                ...languages,
-            },
-            onChange: async (value) => {
-                await localization.setLanguage(value ?? game.i18n?.lang ?? 'en');
-                for (const app of Object.values(ui.windows)) {
-                    if (!(app instanceof KankaJournalApplication)) continue;
-                    app.render();
-                }
+        onChange: async (value) => {
+            await localization.setLanguage(value ?? game.i18n?.lang ?? 'en');
+            for (const app of Object.values(ui.windows)) {
+                if (!(app instanceof KankaJournalApplication)) continue;
+                app.render();
             }
         },
-    );
+    });
 
-    game.settings?.register('kanka-foundry',
-        'keepTreeStructure',
-        {
-            name: getMessage('settings.treeStructure.label'),
-            hint: getMessage('settings.treeStructure.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: true,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'keepTreeStructure', {
+        name: getMessage('settings.treeStructure.label'),
+        hint: getMessage('settings.treeStructure.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: true,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'mergeOverviewPages',
-        {
-            name: getMessage('settings.mergeOverviewPages.label'),
-            hint: getMessage('settings.mergeOverviewPages.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: true,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'mergeOverviewPages', {
+        name: getMessage('settings.mergeOverviewPages.label'),
+        hint: getMessage('settings.mergeOverviewPages.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: true,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'importPrivateEntities',
-        {
-            name: getMessage('settings.importPrivate.label'),
-            hint: getMessage('settings.importPrivate.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: true,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'importPrivateEntities', {
+        name: getMessage('settings.importPrivate.label'),
+        hint: getMessage('settings.importPrivate.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: true,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'importTemplateEntities',
-        {
-            name: getMessage('settings.importTemplate.label'),
-            hint: getMessage('settings.importTemplate.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: false,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'importTemplateEntities', {
+        name: getMessage('settings.importTemplate.label'),
+        hint: getMessage('settings.importTemplate.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: false,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'disableExternalMentionLinks',
-        {
-            name: getMessage('settings.disableExternalLinks.label'),
-            hint: getMessage('settings.disableExternalLinks.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: false,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'disableExternalMentionLinks', {
+        name: getMessage('settings.disableExternalLinks.label'),
+        hint: getMessage('settings.disableExternalLinks.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: false,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'questQuestStatusIcon',
-        {
-            name: getMessage('settings.questStatusIcon.label'),
-            hint: getMessage('settings.questStatusIcon.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: false,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'questQuestStatusIcon', {
+        name: getMessage('settings.questStatusIcon.label'),
+        hint: getMessage('settings.questStatusIcon.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: false,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'automaticPermissions',
-        {
-            name: getMessage('settings.automaticPermissions.label'),
-            hint: getMessage('settings.automaticPermissions.hint'),
-            scope: 'world',
-            config: true,
-            type: String,
-            default: 'never',
-            choices: {
-                never: getMessage('settings.automaticPermissions.values.never'),
-                initial: getMessage('settings.automaticPermissions.values.initial'),
-                always: getMessage('settings.automaticPermissions.values.always'),
-            },
+    game.settings?.register('kanka-foundry', 'automaticPermissions', {
+        name: getMessage('settings.automaticPermissions.label'),
+        hint: getMessage('settings.automaticPermissions.hint'),
+        scope: 'world',
+        config: true,
+        type: String,
+        default: 'never',
+        choices: {
+            never: getMessage('settings.automaticPermissions.values.never'),
+            initial: getMessage('settings.automaticPermissions.values.initial'),
+            always: getMessage('settings.automaticPermissions.values.always'),
         },
-    );
+    });
 
-    game.settings?.register('kanka-foundry',
-        'createActorsForCharacters',
-        {
-            name: getMessage('settings.createActorsForCharacters.label'),
-            hint: getMessage('settings.createActorsForCharacters.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: true,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'createActorsForCharacters', {
+        name: getMessage('settings.createActorsForCharacters.label'),
+        hint: getMessage('settings.createActorsForCharacters.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: true,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'defaultActorType',
-        {
-            name: getMessage('settings.defaultActorType.label'),
-            hint: getMessage('settings.defaultActorType.hint'),
-            scope: 'world',
-            config: true,
-            type: String,
-            default: 'npc',
-            choices: {
-                npc: getMessage('settings.defaultActorType.values.npc'),
-                character: getMessage('settings.defaultActorType.values.character'),
-            },
+    game.settings?.register('kanka-foundry', 'defaultActorType', {
+        name: getMessage('settings.defaultActorType.label'),
+        hint: getMessage('settings.defaultActorType.hint'),
+        scope: 'world',
+        config: true,
+        type: String,
+        default: 'npc',
+        choices: {
+            npc: getMessage('settings.defaultActorType.values.npc'),
+            character: getMessage('settings.defaultActorType.values.character'),
         },
-    );
+    });
 
     // wh40k-rpg ships 7 d100 game systems (BC, DH1, DH2, DW, OW, RT, IM).
     // Actor types are <system>-<kind>, e.g. dh2-npc / dh2-character. The
     // setting below selects the system prefix that kanka-foundry composes
     // onto the bare kind (defaultActorType / 'character' for PC tags).
-    game.settings?.register('kanka-foundry',
-        'defaultGameSystem',
-        {
-            name: getMessage('settings.defaultGameSystem.label'),
-            hint: getMessage('settings.defaultGameSystem.hint'),
-            scope: 'world',
-            config: true,
-            type: String,
-            default: 'dh2',
-            choices: {
-                bc: 'Black Crusade (bc)',
-                dh1: 'Dark Heresy 1e (dh1)',
-                dh2: 'Dark Heresy 2e (dh2)',
-                dw: 'Deathwatch (dw)',
-                ow: 'Only War (ow)',
-                rt: 'Rogue Trader (rt)',
-                im: 'Imperium Maledictum (im)',
-            },
+    game.settings?.register('kanka-foundry', 'defaultGameSystem', {
+        name: getMessage('settings.defaultGameSystem.label'),
+        hint: getMessage('settings.defaultGameSystem.hint'),
+        scope: 'world',
+        config: true,
+        type: String,
+        default: 'dh2',
+        choices: {
+            bc: 'Black Crusade (bc)',
+            dh1: 'Dark Heresy 1e (dh1)',
+            dh2: 'Dark Heresy 2e (dh2)',
+            dw: 'Deathwatch (dw)',
+            ow: 'Only War (ow)',
+            rt: 'Rogue Trader (rt)',
+            im: 'Imperium Maledictum (im)',
         },
-    );
+    });
 
-    game.settings?.register('kanka-foundry',
-        'pcTags',
-        {
-            name: getMessage('settings.pcTags.label'),
-            hint: getMessage('settings.pcTags.hint'),
-            scope: 'world',
-            config: true,
-            type: String,
-            default: 'pc,acolyte',
-        },
-    );
+    game.settings?.register('kanka-foundry', 'pcTags', {
+        name: getMessage('settings.pcTags.label'),
+        hint: getMessage('settings.pcTags.hint'),
+        scope: 'world',
+        config: true,
+        type: String,
+        default: 'pc,acolyte',
+    });
 
-    game.settings?.register('kanka-foundry',
-        'syncBackActors',
-        {
-            name: getMessage('settings.syncBackActors.label'),
-            hint: getMessage('settings.syncBackActors.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: true,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'syncBackActors', {
+        name: getMessage('settings.syncBackActors.label'),
+        hint: getMessage('settings.syncBackActors.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: true,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'syncBackJournals',
-        {
-            name: getMessage('settings.syncBackJournals.label'),
-            hint: getMessage('settings.syncBackJournals.hint'),
-            scope: 'world',
-            config: true,
-            type: Boolean,
-            default: false,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'syncBackJournals', {
+        name: getMessage('settings.syncBackJournals.label'),
+        hint: getMessage('settings.syncBackJournals.hint'),
+        scope: 'world',
+        config: true,
+        type: Boolean,
+        default: false,
+    });
 
-    game.settings?.register('kanka-foundry',
-        'browserView',
-        {
-            scope: 'client',
-            config: false,
-            type: String,
-            default: 'list',
-        },
-    );
+    game.settings?.register('kanka-foundry', 'browserView', {
+        scope: 'client',
+        config: false,
+        type: String,
+        default: 'list',
+    });
 
-    game.settings?.register('kanka-foundry',
-        'currentDay',
-        {
-            scope: 'world',
-            config: false,
-            type: Number,
-            default: 0,
-        },
-    );
+    game.settings?.register('kanka-foundry', 'currentDay', {
+        scope: 'world',
+        config: false,
+        type: Number,
+        default: 0,
+    });
 
     for (const type of Object.values(EntityType)) {
         if (type === EntityType.campaign) {
             continue;
         }
 
-        game.settings?.register('kanka-foundry',
-            `collapseType_${type}`,
-            {
-                scope: 'client',
-                config: false,
-                type: Boolean,
-                default: false,
-            },
-
-        );
+        game.settings?.register('kanka-foundry', `collapseType_${type}`, {
+            scope: 'client',
+            config: false,
+            type: Boolean,
+            default: false,
+        });
     }
 }
 

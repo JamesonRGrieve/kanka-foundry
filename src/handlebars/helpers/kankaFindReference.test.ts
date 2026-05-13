@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import type Reference from '../../types/Reference';
+import type { KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../../types/kanka';
 import kankaFindReference from './kankaFindReference';
 import kankaIsAccessible from './kankaIsAccessible';
 
@@ -11,11 +11,7 @@ function compile(template: string, context = {}): string {
     return Handlebars.compile(template)(context);
 }
 
-function createReference(
-    id: KankaApiId,
-    entityId: KankaApiEntityId,
-    type: KankaApiModuleType = 'character',
-): Reference {
+function createReference(id: KankaApiId, entityId: KankaApiEntityId, type: KankaApiModuleType = 'character'): Reference {
     return {
         id,
         entityId,

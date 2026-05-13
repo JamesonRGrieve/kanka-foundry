@@ -3,12 +3,14 @@ import type AccessToken from './AccessToken';
 import NotAuthenticatedError from './NotAuthenticatedError';
 import RateLimiter from './RateLimiter';
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 const defaultLimit = 300;
 
 export default class KankaFetcher {
     #base: string;
-    #token?: AccessToken;
-    #limiter = new RateLimiter(61, defaultLimit);
+    #token: AccessToken | undefined = undefined;
+    readonly #limiter = new RateLimiter(61, defaultLimit);
 
     constructor(base: string) {
         this.#base = this.normalizeUrl(base);
@@ -56,7 +58,7 @@ export default class KankaFetcher {
             method,
             mode: 'cors',
             headers: {
-                Authorization: `Bearer ${this.#token.toString()}`,
+                'Authorization': `Bearer ${this.#token.toString()}`,
                 'Content-type': 'application/json',
             },
         };
@@ -81,7 +83,9 @@ export default class KankaFetcher {
             throw new Error(`Kanka request error: ${response.statusText} (${response.status})`);
         }
 
-        return response.json() as T;
+        const json: unknown = await response.json();
+        assertType<T>(json);
+        return json;
     }
 
     public async fetch<T extends KankaApiResult<unknown>>(path: string): Promise<T> {
@@ -100,11 +104,7 @@ export default class KankaFetcher {
         await this.request<unknown>(path, 'DELETE');
     }
 
-    public async uploadFile<T extends KankaApiResult<unknown>>(
-        path: string,
-        file: Blob,
-        fieldName = 'image',
-    ): Promise<T> {
+    public async uploadFile<T extends KankaApiResult<unknown>>(path: string, file: Blob, fieldName = 'image'): Promise<T> {
         if (!this.#token) {
             throw new Error('Missing token in KankaFetcher');
         }
@@ -133,7 +133,7 @@ export default class KankaFetcher {
             throw new Error(`Kanka upload error: ${response.statusText} (${response.status})`);
         }
 
-        return response.json() as unknown as T;
+        return response.json();
     }
 
     private normalizeUrl(url: string): string {

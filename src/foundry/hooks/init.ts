@@ -1,14 +1,16 @@
 import moduleConfig from '../../../public/module.json';
 import api from '../../api';
+function assertType<T>(_value: unknown): asserts _value is T {}
 import AccessToken from '../../api/AccessToken';
 import EventTrackerApplication from '../../apps/EventTracker/EventTrackerApplication';
 import DefaultPageSheet from '../../apps/KankaJournal/DefaultPageSheet';
 import KankaJournalApplication from '../../apps/KankaJournal/KankaJournalApplication';
-import { KankaPageModel } from '../../apps/KankaJournal/models/KankaPageModel';
 import PostPageSheet from '../../apps/KankaJournal/PostPageSheet';
+import { KankaPageModel } from '../../apps/KankaJournal/models/KankaPageModel';
 import registerHandlebarsHelpers from '../../handlebars/registerHandlebarsHelper';
 import { logError } from '../../util/logger';
 import { registerActorSheetButtons } from '../actorSheetButton';
+import { registerCampaignDescriptionHooks } from '../campaignJournal';
 import { showError, showWarning } from '../notifications';
 import { registerSettings } from '../settings';
 import { registerSyncBackHooks } from '../syncBack';
@@ -50,45 +52,41 @@ function renderDebugElement(): void {
 
 export default function init(): void {
     try {
-        const pageTypes = Object.keys(moduleConfig.documentTypes.JournalEntryPage).map(
-            (type) => `${moduleConfig.id}.${type}`,
-        );
+        const pageTypes = Object.keys(moduleConfig.documentTypes.JournalEntryPage).map((type) => `${moduleConfig.id}.${type}`);
         const dataModelTypes = pageTypes.filter((type) => ![`${moduleConfig.id}.post`].includes(type));
 
         Object.assign(
             CONFIG.JournalEntryPage.dataModels,
-            dataModelTypes.reduce<Record<string, unknown>>(
-                (config, type) => { config[type] = KankaPageModel; return config; },
-                {},
-            ),
+            dataModelTypes.reduce<Record<string, unknown>>((config, type) => {
+                config[type] = KankaPageModel;
+                return config;
+            }, {}),
         );
 
         const SheetConfig = foundry.applications.apps.DocumentSheetConfig;
 
-        SheetConfig.registerSheet(
-            JournalEntry,
-            moduleConfig.name,
-            KankaJournalApplication as unknown as foundry.applications.api.DocumentSheetV2.AnyConstructor,
-            { makeDefault: false },
-        );
+        SheetConfig.registerSheet(JournalEntry, moduleConfig.name, KankaJournalApplication, { makeDefault: false });
 
-        SheetConfig.registerSheet(
-            JournalEntryPage,
-            moduleConfig.name,
-            PostPageSheet as unknown as foundry.applications.api.DocumentSheetV2.AnyConstructor,
-            { types: [`${moduleConfig.id}.post`], makeDefault: false },
-        );
+        type PageSubType = Parameters<typeof SheetConfig.registerSheet<typeof JournalEntryPage>>[3] extends { types?: readonly (infer T)[] } ? T : never;
 
-        SheetConfig.registerSheet(
-            JournalEntryPage,
-            moduleConfig.name,
-            DefaultPageSheet as unknown as foundry.applications.api.DocumentSheetV2.AnyConstructor,
-            { types: pageTypes.filter((type) => ![`${moduleConfig.id}.post`].includes(type)), makeDefault: false },
-        );
+        const postTypes: string[] = [`${moduleConfig.id}.post`];
+        assertType<PageSubType[]>(postTypes);
+        SheetConfig.registerSheet(JournalEntryPage, moduleConfig.name, PostPageSheet, {
+            types: postTypes,
+            makeDefault: false,
+        });
+
+        const defaultTypes: string[] = pageTypes.filter((type) => ![`${moduleConfig.id}.post`].includes(type));
+        assertType<PageSubType[]>(defaultTypes);
+        SheetConfig.registerSheet(JournalEntryPage, moduleConfig.name, DefaultPageSheet, {
+            types: defaultTypes,
+            makeDefault: false,
+        });
 
         registerHandlebarsHelpers();
         registerSettings();
         registerSyncBackHooks();
+        registerCampaignDescriptionHooks();
         registerActorSheetButtons();
 
         // Debug output to show current rate limiting
@@ -100,9 +98,9 @@ export default function init(): void {
         setToken(game.settings?.get('kanka-foundry', 'accessToken') ?? '');
 
         // Expose EventTracker for macro access: game.modules.get('kanka-foundry').eventTracker.render(true)
-        const mod = game.modules?.get('kanka-foundry') as unknown as Record<string, unknown> | undefined;
-        if (mod) {
-            mod.eventTracker = new EventTrackerApplication();
+        const rawMod: unknown = game.modules?.get('kanka-foundry');
+        if (rawMod !== null && typeof rawMod === 'object') {
+            Reflect.set(rawMod, 'eventTracker', new EventTrackerApplication());
         }
     } catch (error) {
         logError(error);

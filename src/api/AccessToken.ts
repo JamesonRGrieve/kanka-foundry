@@ -1,8 +1,8 @@
 import { type JwtPayload, jwtDecode } from 'jwt-decode';
 
 export default class AccessToken {
-    #token: string;
-    #payload: JwtPayload;
+    readonly #token: string;
+    readonly #payload: JwtPayload;
 
     public constructor(token: string) {
         this.#payload = jwtDecode<JwtPayload>(token);
