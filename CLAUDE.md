@@ -66,11 +66,45 @@ Always verify response shapes against real API data rather than relying solely o
 
 ## Code Quality
 
-- **Linter**: Biome (not ESLint) — config in `biome.json`
+- **Linters**: Biome (`biome.json`) and ESLint (`.eslintrc.json`) — both enforced
 - **TypeScript**: strict mode enabled
 - **Tests**: Vitest — test files are co-located with source (`*.test.ts`)
 - **Formatting**: Prettier
 - Always run `pnpm check` before committing
+
+### Ratchets (one-way-valve quality gates)
+
+Every metric below is backed by a baseline file at the repo root and a script
+in `scripts/`. The rule is a one-way valve: a metric may improve, never
+regress. Several ratchets **auto-flip to a hard "strict" gate** once a per-rule
+or per-category count reaches 0 (further occurrences then fail with no `--update`
+escape). After a genuine improvement, run the matching `*:ratchet:update` and
+commit the changed baseline **in the same commit**. Never loosen a baseline to
+make a regression pass — fix the source.
+
+| Gate | Script | Direction | Baseline |
+| --- | --- | --- | --- |
+| `biome:ratchet` | biome diagnostics (errors+warnings) | may not rise | `.biome-warning-baseline` |
+| `lint:ratchet` | ESLint warning count | may not rise; errors never allowed | `.eslint-warning-baseline` |
+| `typecheck:ratchet` | `tsc -p tsconfig.json` per-TS-code | may not rise; auto-flips at 0 | `.tsc-baseline` |
+| `strict:ratchet` | `tsc -p tsconfig.strict.json` per-TS-code | may not rise; auto-flips at 0 | `.strict-coverage-baseline` |
+| `ts:ratchet` | per-dir `any`/`as any`/`@ts-expect-error`/`@ts-ignore` | may not rise; auto-flips at 0 | `.ts-coverage-baseline` |
+| `type-coverage:ratchet` | inferred type-coverage `--strict` | covered count may not fall; auto-flips at 100% | `.type-coverage-baseline` |
+| `knip:ratchet` | per-category unused detection | may not rise; auto-flips per category at 0 | `.knip-baseline` |
+| `deps:ratchet` | dependency-cruiser per-rule violations (3-layer + correctness) | may not rise; auto-flips per rule at 0 | `.depcruise-baseline` |
+| `dry-todo:ratchet` | `TODO(dry)` marker count | may not rise | `.dry-todo-baseline` |
+| `css:ratchet` | raw CSS rule-block count (Tailwind-migration direction) | may not rise | `.css-coverage-baseline` |
+| `important:ratchet` | `!important` count across CSS/SCSS | may not rise | `.important-baseline` |
+| `theme:ratchet` | hardcoded hex-color count (use design tokens) — **low-baseline guard** | may not rise | `.theme-baseline` |
+| `animation:ratchet` | raw `animation:` declaration count — **low-baseline guard** | may not rise | `.animation-baseline` |
+| `lockfile:validate` | every `pnpm-lock.yaml` resolution host on the allow-list | hard gate | — |
+| `i18n:check` | `en.yml` (reference langpack) parses; de/it/pt_BR drift is warn-only (Weblate-managed) | hard gate on en.yml only | — |
+
+All of the above run in `.husky/pre-commit` (after `lint-staged`), followed by
+`pnpm test`. Do not `--no-verify` past a failing gate without explicit
+authorization. `theme`/`animation` are guards, not migration trackers — kanka
+has no per-system Tailwind variant architecture, so they simply block
+introducing the anti-pattern.
 
 ## Commit Guidelines
 

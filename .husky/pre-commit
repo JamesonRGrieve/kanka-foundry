@@ -32,6 +32,36 @@ pnpm -s type-coverage:ratchet
 echo "[pre-commit] running knip ratchet…"
 pnpm -s knip:ratchet
 
+# dependency-cruiser ratchet: per-rule architecture violation counts cannot
+# rise; auto-flips each rule to strict at 0.
+echo "[pre-commit] running deps ratchet…"
+pnpm -s deps:ratchet
+
+# i18n consistency: en.yml (reference langpack) must parse. de/it/pt_BR are
+# Weblate-managed, so their missing/extra keys are warnings only, never a fail.
+echo "[pre-commit] running i18n check…"
+pnpm -s i18n:check
+
+# DRY-TODO ratchet: TODO(dry) marker count cannot rise.
+echo "[pre-commit] running dry-todo ratchet…"
+pnpm -s dry-todo:ratchet
+
+# CSS-coverage ratchet: raw CSS rule count cannot rise (Tailwind direction).
+echo "[pre-commit] running css ratchet…"
+pnpm -s css:ratchet
+
+# !important ratchet: count across CSS files cannot rise.
+echo "[pre-commit] running important ratchet…"
+pnpm -s important:ratchet
+
+# theme guard: hardcoded hex color count cannot rise.
+echo "[pre-commit] running theme ratchet…"
+pnpm -s theme:ratchet
+
+# animation guard: raw animation: declaration count cannot rise.
+echo "[pre-commit] running animation ratchet…"
+pnpm -s animation:ratchet
+
 # Lockfile validator: every resolution URL must point at an allow-listed host.
 echo "[pre-commit] running lockfile-validate…"
 pnpm -s lockfile:validate

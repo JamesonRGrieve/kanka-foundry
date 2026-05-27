@@ -10,3 +10,7 @@
 /.ts-coverage.json
 /.strict-coverage.json
 /.tsc-coverage.json
+/.css-coverage.json
+/.important-coverage.json
+/.theme-coverage.json
+/.animation-coverage.json

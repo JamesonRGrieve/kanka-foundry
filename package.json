@@ -39,7 +39,23 @@
         "knip": "knip",
         "knip:ratchet": "node scripts/knip-ratchet.mjs",
         "knip:ratchet:update": "node scripts/knip-ratchet.mjs --update",
-        "lockfile:validate": "node scripts/lockfile-validate.mjs"
+        "lockfile:validate": "node scripts/lockfile-validate.mjs",
+        "deps:check": "depcruise --config .dependency-cruiser.cjs src",
+        "deps:ratchet": "node scripts/depcruise-ratchet.mjs",
+        "deps:ratchet:update": "node scripts/depcruise-ratchet.mjs --update",
+        "i18n:check": "node scripts/i18n-check.mjs",
+        "dry-todo:coverage": "node scripts/dry-todo-ratchet.mjs --list",
+        "dry-todo:ratchet": "node scripts/dry-todo-ratchet.mjs",
+        "dry-todo:ratchet:update": "node scripts/dry-todo-ratchet.mjs --update",
+        "css:coverage": "node scripts/css-coverage.mjs",
+        "css:ratchet": "node scripts/css-ratchet.mjs",
+        "css:ratchet:update": "node scripts/css-ratchet.mjs --update",
+        "important:ratchet": "node scripts/important-ratchet.mjs",
+        "important:ratchet:update": "node scripts/important-ratchet.mjs --update",
+        "theme:ratchet": "node scripts/theme-ratchet.mjs",
+        "theme:ratchet:update": "node scripts/theme-ratchet.mjs --update",
+        "animation:ratchet": "node scripts/animation-ratchet.mjs",
+        "animation:ratchet:update": "node scripts/animation-ratchet.mjs --update"
     },
     "lint-staged": {
         "src/**/*.ts": [
@@ -64,6 +80,7 @@
         "@typescript-eslint/parser": "^8.58.0",
         "@typhonjs-fvtt/eslint-config-foundry.js": "0.8.0",
         "@vitest/coverage-v8": "^4.1.0",
+        "dependency-cruiser": "^17.4.2",
         "eslint": "^8.57.1",
         "eslint-config-prettier": "9.1.2",
         "eslint-plugin-import": "^2.32.0",
@@ -83,7 +100,8 @@
         "type-coverage": "^2.29.0",
         "typescript": "^5.8.3",
         "vite": "^8.0.1",
-        "vitest": "^4.1.0"
+        "vitest": "^4.1.0",
+        "yaml": "^2.9.0"
     },
     "dependencies": {
         "@tailwindcss/vite": "^4.2.2",

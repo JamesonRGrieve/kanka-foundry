@@ -1,0 +1,9 @@
+{
+  "strict": [],
+  "totals": {
+    "totalViolations": 15
+  },
+  "byRule": {
+    "no-orphans": 15
+  }
+}
