@@ -2,7 +2,7 @@
     {{#each entities}}
         <li
             class="knk:flex knk:border-b knk:items-center knk:gap-1 knk:m-0 knk:py-1 knk:px-1"
-            style="border-color: var(--color-border); {{ifThen
+            style="border-color: var(--color-border); padding-left: calc(0.5rem + {{#if this.depth}}{{this.depth}}{{else}}0{{/if}} * 1rem); {{ifThen
                 this.state.isOutdated
                 'background-color: var(--color-level-info-bg) !important;'
                 ''

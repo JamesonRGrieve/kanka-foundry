@@ -446,10 +446,8 @@ async function reconcileImage(actor: Actor, campaignId: KankaApiId, kankaEntityI
 
     // Kanka is the single source of truth for portraits.
     // Use the Kanka URL directly — no local downloads.
-    let portraitChanged = false;
     if (kankaHasImage && kankaImageUrl && foundryImg !== kankaImageUrl) {
         await actor.update({ img: kankaImageUrl });
-        portraitChanged = true;
         logInfo(`Portrait: Kanka → Foundry for ${actor.name}`);
     } else if (!kankaHasImage && foundryImg && isLocalImage(foundryImg)) {
         // Foundry has a local image but Kanka doesn't — push to Kanka
@@ -465,9 +463,80 @@ async function reconcileImage(actor: Actor, campaignId: KankaApiId, kankaEntityI
         }
     }
 
-    // Sync token image (from Kanka entity asset named "token")
+    // Sync token image (from Kanka entity asset named "token").
+    // Force on every reconcile: Foundry copies actor.img into
+    // prototypeToken.texture.src on actor create, so without force the
+    // existence check inside syncTokenImage bails (treats the portrait URL
+    // as user-customised). Kanka is the source of truth here.
     const currentActor = getGameActors()?.get(actor.id ?? '') ?? actor;
-    await syncTokenImage(currentActor, campaignId, kankaEntityId, portraitChanged);
+    await syncTokenImage(currentActor, campaignId, kankaEntityId, true);
+    // Push the prototype token texture down to any already-placed scene
+    // tokens for this actor, so a reconcile actually moves what the GM sees
+    // — placed Tokens snapshot texture.src at placement and don't otherwise
+    // pick up prototype changes.
+    await propagateTokenTextureToScenes(currentActor);
+}
+
+async function propagateTokenTextureToScenes(actor: Actor): Promise<void> {
+    const actorRaw: unknown = actor;
+    const protoRaw: unknown = actorRaw !== null && typeof actorRaw === 'object' ? Reflect.get(actorRaw, 'prototypeToken') : undefined;
+    if (protoRaw === null || typeof protoRaw !== 'object') return;
+    const textureRaw: unknown = Reflect.get(protoRaw, 'texture');
+    const src: unknown = textureRaw !== null && typeof textureRaw === 'object' ? Reflect.get(textureRaw, 'src') : undefined;
+    if (typeof src !== 'string' || src === '') return;
+
+    // Build the full token patch from the actor's current prototype so placed
+    // tokens inherit the ring config (enabled, colors, effects, scale, subject
+    // texture) the prototype was just updated with — not just the texture.
+    const tokenPatch: Record<string, unknown> = { 'texture.src': src, 'sight.enabled': true };
+    // Mirror the prototype's displayName onto placed tokens (kanka actors set
+    // this to 0/NONE for NPCs in syncTokenImage; PCs keep whatever's there).
+    const protoDisplayName: unknown = Reflect.get(protoRaw, 'displayName');
+    if (typeof protoDisplayName === 'number') tokenPatch['displayName'] = protoDisplayName;
+    const ringRaw: unknown = Reflect.get(protoRaw, 'ring');
+    if (ringRaw !== null && typeof ringRaw === 'object') {
+        const ringEnabled: unknown = Reflect.get(ringRaw, 'enabled');
+        if (typeof ringEnabled === 'boolean') tokenPatch['ring.enabled'] = ringEnabled;
+        const colors: unknown = Reflect.get(ringRaw, 'colors');
+        if (colors !== null && typeof colors === 'object') {
+            for (const key of ['ring', 'background'] as const) {
+                const v: unknown = Reflect.get(colors, key);
+                if (v !== undefined && v !== null) tokenPatch[`ring.colors.${key}`] = v;
+            }
+        }
+        const effects: unknown = Reflect.get(ringRaw, 'effects');
+        if (typeof effects === 'number') tokenPatch['ring.effects'] = effects;
+        const subject: unknown = Reflect.get(ringRaw, 'subject');
+        if (subject !== null && typeof subject === 'object') {
+            const subjTex: unknown = Reflect.get(subject, 'texture');
+            if (typeof subjTex === 'string' && subjTex !== '') {
+                tokenPatch['ring.subject.texture'] = subjTex;
+            }
+            const subjScale: unknown = Reflect.get(subject, 'scale');
+            if (typeof subjScale === 'number') {
+                tokenPatch['ring.subject.scale'] = subjScale;
+            }
+        }
+    }
+
+    const scenesRaw: unknown = Reflect.get(game, 'scenes');
+    if (scenesRaw === null || scenesRaw === undefined) return;
+    assertType<Scenes>(scenesRaw);
+    for (const scene of scenesRaw) {
+        for (const token of scene.tokens) {
+            if (token === null || typeof token !== 'object') continue;
+            const tokActorIdRaw: unknown = Reflect.get(token, 'actorId');
+            if (tokActorIdRaw !== actor.id) continue;
+            const updateRaw: unknown = Reflect.get(token, 'update');
+            if (typeof updateRaw !== 'function') continue;
+            assertType<(data: Record<string, unknown>) => Promise<void>>(updateRaw);
+            try {
+                await updateRaw.call(token, tokenPatch);
+            } catch (error) {
+                logError(`Failed to update placed token for ${actor.name}`, error);
+            }
+        }
+    }
 }
 
 /**

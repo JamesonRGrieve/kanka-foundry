@@ -137,9 +137,21 @@ export async function updateJournalEntry(
 
     if (!campaignId || !type) throw new Error('Missing flags on journal entry');
 
+    // Recompute the folder path on update so entries imported before their
+    // Kanka ancestry existed (or that have since been re-parented) get moved
+    // into the correct nested folder, mirroring createJournalEntry.
+    const withChildren = 'parents' in entity ? entity : undefined;
+    const path =
+        [...(withChildren?.parents ?? [])]
+            .reverse()
+            .map((id) => references.findByIdAndType(id, type))
+            .filter((ref): ref is Reference => !!ref) ?? [];
+    const folder = await ensureFolderPath(type, path);
+
     await entry.deleteEmbeddedDocuments('JournalEntryPage', [], { deleteAll: true });
     await entry.update({
         name: entry.name === oldName ? entity.name : oldName, // Keep existing journal name if it was renamed by user
+        folder: folder?.id,
         pages: createAllPages(campaignId, type, entity, references, entry),
         flags: {
             'core': {

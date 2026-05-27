@@ -8,7 +8,7 @@ import { showError } from '../../foundry/notifications';
 import type { KankaSettings } from '../../foundry/settings';
 import { createEntities, createEntity, updateEntity } from '../../syncEntities';
 import EntityType from '../../types/EntityType';
-import type { KankaApiCampaign, KankaApiEntity } from '../../types/kanka';
+import type { KankaApiCampaign, KankaApiEntity, KankaApiId } from '../../types/kanka';
 import groupBy from '../../util/groupBy';
 import { logError } from '../../util/logger';
 import campaignTemplate from './templates/campaign.hbs';
@@ -82,6 +82,12 @@ type RenderContext = ApplicationV2.RenderContext &
 export default class KankaBrowserApplication extends HandlebarsApplicationMixin(ApplicationV2<RenderContext>) {
     #search = '';
     #entities: KankaApiEntity[] | null = null;
+    #locationMeta: Map<number, { parentId: number | null; name: string }> = new Map();
+
+    static #idToNumber(id: KankaApiId | null | undefined): number | null {
+        if (id === null || id === undefined) return null;
+        return typeof id === 'number' ? id : Number(id);
+    }
     #allCampaigns: KankaApiCampaign[] | null = null;
     #campaign: KankaApiCampaign | null = null;
     readonly #hooks: Partial<Record<Hooks.HookName, number>> = {};
@@ -311,7 +317,7 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
     protected getEntities(type?: EntityType) {
         if (!this.#entities) return [];
 
-        return this.#entities
+        const mapped = this.#entities
             .filter((e) => e.name.toLowerCase().includes(this.#search.toLowerCase()) && (!type || e.module.code === type))
             .map((entity) => {
                 const isOutdated = hasOutdatedEntryByEntity(entity);
@@ -323,8 +329,51 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
                         isLinked: Boolean(findEntryByEntityId(entity.id)),
                     },
                 };
-            })
-            .toSorted((a, b) => a.name.localeCompare(b.name));
+            });
+
+        const isLocationOnly = type === EntityType.location && mapped.every((e) => e.module.code === EntityType.location);
+
+        if (isLocationOnly && this.#locationMeta.size > 0) {
+            return this.#sortLocationsHierarchically(mapped);
+        }
+
+        return mapped.toSorted((a, b) => a.name.localeCompare(b.name));
+    }
+
+    #sortLocationsHierarchically<T extends KankaApiEntity & { state: unknown }>(entities: T[]): Array<T & { depth: number }> {
+        const meta = this.#locationMeta;
+
+        // Build the ancestor-name path (root → self) for each entity, walking parentId with a cycle guard.
+        const decorate = (entity: T): { entity: T; depth: number; sortPath: string[] } => {
+            const path: string[] = [];
+            const seen = new Set<number>();
+            let currentId: number | null = KankaBrowserApplication.#idToNumber(entity.child_id);
+
+            while (currentId !== null && !seen.has(currentId)) {
+                seen.add(currentId);
+                const node = meta.get(currentId);
+                const label = node?.name ?? entity.name;
+                path.unshift(label);
+                currentId = node?.parentId ?? null;
+            }
+
+            // depth = number of ancestors (path length minus self)
+            const depth = Math.max(0, path.length - 1);
+            return { entity, depth, sortPath: path };
+        };
+
+        const decorated = entities.map(decorate);
+
+        decorated.sort((a, b) => {
+            const len = Math.min(a.sortPath.length, b.sortPath.length);
+            for (let i = 0; i < len; i++) {
+                const cmp = (a.sortPath[i] ?? '').localeCompare(b.sortPath[i] ?? '');
+                if (cmp !== 0) return cmp;
+            }
+            return a.sortPath.length - b.sortPath.length;
+        });
+
+        return decorated.map(({ entity, depth }) => ({ ...entity, depth }));
     }
 
     protected setLoadingState(button: HTMLButtonElement): void {
@@ -364,12 +413,35 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         });
     }
 
+    protected async loadLocationMeta(campaignId: number): Promise<Map<number, { parentId: number | null; name: string }>> {
+        const map = new Map<number, { parentId: number | null; name: string }>();
+
+        try {
+            const locations = await api.getAllLocations(campaignId);
+            for (const location of locations) {
+                const id = KankaBrowserApplication.#idToNumber(location.id);
+                if (id === null) continue;
+                const parentId = KankaBrowserApplication.#idToNumber(location.location_id ?? location.parent_location_id ?? null);
+                map.set(id, { parentId, name: location.name });
+            }
+        } catch (error) {
+            // Resilient fallback: if location parentage can't be fetched, locations render flat.
+            logError('Failed to load location hierarchy; falling back to flat list', error);
+        }
+
+        return map;
+    }
+
     protected async loadDataForCampaign(campaignId?: number) {
-        if (!campaignId) return { campaign: null, entities: null };
+        if (!campaignId) return { campaign: null, entities: null, locationMeta: new Map<number, { parentId: number | null; name: string }>() };
 
-        const [campaign, entities] = await Promise.all([api.getCampaign(campaignId), this.loadEntities(campaignId)]);
+        const [campaign, entities, locationMeta] = await Promise.all([
+            api.getCampaign(campaignId),
+            this.loadEntities(campaignId),
+            this.loadLocationMeta(campaignId),
+        ]);
 
-        return { campaign, entities };
+        return { campaign, entities, locationMeta };
     }
 
     protected setupData(this: KankaBrowserApplication): void {
@@ -381,13 +453,15 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         this.#allCampaigns = null;
         this.#campaign = null;
         this.#entities = null;
+        this.#locationMeta = new Map();
         this.#isLoading = true;
 
         Promise.all([api.getAllCampaigns(), this.loadDataForCampaign(campaignId)])
-            .then(([allCampaigns, { campaign, entities }]) => {
+            .then(([allCampaigns, { campaign, entities, locationMeta }]) => {
                 this.#allCampaigns = allCampaigns;
                 this.#campaign = campaign;
                 this.#entities = entities;
+                this.#locationMeta = locationMeta;
                 this.#isLoading = false;
                 this.render({ force: true });
             })

@@ -1,5 +1,6 @@
 import type { KankaApiAttribute, KankaApiCharacter, KankaApiEntityId, KankaApiId } from '../types/kanka';
 import { BIO_MAP, CHARACTERISTIC_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_MAP } from './actorAttributeMaps';
+import { syncTokenImage } from './tokenImage';
 
 function getAttributeValue(attributes: KankaApiAttribute[], name: string): number | null {
     const attr = attributes.find((a) => a.name === name);
@@ -131,11 +132,11 @@ function createActorData(
         type: actorType,
         img: entity.has_custom_image ? entity.image_full : undefined,
         system,
-        // displayName 30 = HOVER (any user). Without this, Foundry's default
-        // (NONE = 0) hides the nameplate entirely, which makes it impossible
-        // to tell tokens apart at the table.
+        // displayName: 0 = NONE (hidden) for NPCs — players shouldn't get
+        // free hover-ID on every uniformed extra. 30 = HOVER for PCs so the
+        // party can tell each other apart at a glance.
         prototypeToken: {
-            displayName: 30,
+            displayName: actorType.endsWith('-npc') ? 0 : 30,
         },
         flags: {
             'kanka-foundry': {
@@ -178,9 +179,17 @@ export async function createOrUpdateActor(
             system: actorData['system'],
             flags: actorData['flags'],
         } as Record<string, unknown>);
+        // Foundry copies actor.img into prototypeToken.texture.src by default
+        // on create, so an unforced token sync will bail (the current value
+        // looks "user-set"). Force it on every import so the canonical Kanka
+        // token URL — which serves the circular-masked asset — is always the
+        // token texture.
+        await syncTokenImage(existing, campaignId, entity.entity_id, true);
         return existing;
     }
 
     // biome-ignore lint/complexity/noBannedTypes: Foundry's strict CreateData type doesn't accept dynamic actor data
-    return (await (Actor.create as Function)(actorData)) as Actor;
+    const created = (await (Actor.create as Function)(actorData)) as Actor;
+    await syncTokenImage(created, campaignId, entity.entity_id, true);
+    return created;
 }
