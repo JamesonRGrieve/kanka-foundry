@@ -106,6 +106,23 @@ authorization. `theme`/`animation` are guards, not migration trackers — kanka
 has no per-system Tailwind variant architecture, so they simply block
 introducing the anti-pattern.
 
+### Tier B e2e (Foundry) — `e2e:ratchet`
+
+`pnpm test:e2e` runs Playwright against a **real Foundry instance**, reusing the
+sibling `../.foundry-system` harness: `scripts/setup-foundry-e2e.sh` invokes the
+system's `setup-foundry-test-world.sh` (which assembles a licensed Foundry +
+the wh40k-rpg system + seed world), then symlinks this module's `dist/` in as a
+module. Specs (`tests/e2e/`) activate the module in-world and exercise the item
+bridge against the **real dh2 compendium**. `pnpm e2e:ratchet` gates the passing
+count (`.e2e-baseline`): it may rise, never fall; any failure is a hard fail.
+
+This lane is **NOT in pre-commit** (a Foundry boot is too slow) and **NOT in the
+standard CI `tests.yml`** (public CI has neither the sibling system nor a
+licensed Foundry — `scripts/run-e2e.sh` self-skips with exit 0 when
+`../.foundry-system/.foundry-release` is absent). Run it in a licensed lane:
+`FOUNDRY_INTEGRATION=required pnpm test:e2e && pnpm e2e:ratchet`. It depends on
+the sibling system being checked out and built next to this repo.
+
 ## Commit Guidelines
 
 - Do **NOT** add "Co-Authored-By" lines referencing Claude, AI, or any AI tool

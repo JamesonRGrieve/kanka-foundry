@@ -20,6 +20,10 @@
         "test": "vitest run",
         "test:watch": "vitest watch",
         "test:coverage": "vitest run --coverage",
+        "test:e2e": "bash scripts/run-e2e.sh",
+        "e2e:ratchet": "node scripts/e2e-ratchet.mjs",
+        "e2e:ratchet:update": "node scripts/e2e-ratchet.mjs --update",
+        "foundry:setup-test-world": "bash scripts/setup-foundry-e2e.sh",
         "prepare": "husky",
         "lint:ratchet": "node scripts/lint-ratchet.mjs",
         "lint:ratchet:update": "node scripts/lint-ratchet.mjs --update",
@@ -71,6 +75,7 @@
     "license": "MIT",
     "devDependencies": {
         "@biomejs/biome": "^2.4.8",
+        "@playwright/test": "^1.60.0",
         "@semantic-release/changelog": "^6.0.0",
         "@semantic-release/git": "^10.0.0",
         "@types/jquery": "^3.5.34",

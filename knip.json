@@ -5,11 +5,14 @@
         "src/index.js",
         "src/setupTests.ts",
         "scripts/*.mjs",
-        "vite.config.ts"
+        "vite.config.ts",
+        "playwright.foundry.config.ts",
+        "tests/e2e/**/*.ts"
     ],
     "project": [
         "src/**/*.ts",
-        "build/**/*.ts"
+        "build/**/*.ts",
+        "tests/e2e/**/*.ts"
     ],
     "ignore": [
         "src/foundryTypes.d.ts",
