@@ -1,6 +1,7 @@
 import api from '../api';
-import type { KankaApiAttribute, KankaApiEntityId, KankaApiId } from '../types/kanka';
+import type { KankaApiAttribute, KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
+import { type PlainObject, asRecord, readProp, readRecord, readString } from '../util/reflection';
 import { BIO_MAP, CHARACTERISTIC_REVERSE_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_REVERSE_MAP } from './actorAttributeMaps';
 import { syncTokenImage } from './tokenImage';
 
@@ -74,6 +75,83 @@ function getNestedField(target: Record<string, unknown>, outerKey: string, inner
 
 const DEBOUNCE_MS = 5000;
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// ---------------------------------------------------------------------------
+// Pure helpers for write-back (separately testable — no Foundry globals)
+// ---------------------------------------------------------------------------
+
+/** A minimal view of a Foundry world Item's narrative-relevant fields. */
+export interface ItemWriteBackInput {
+    name?: string | undefined;
+    type?: string | undefined;
+    system?: PlainObject | undefined;
+}
+
+/**
+ * Build the Kanka item update payload from a Foundry item. Pushes only
+ * narrative fields — name, description, type, price, weight — and NEVER
+ * mechanical stats (damage, penetration, etc.); Kanka is not the stat source.
+ *
+ * Field mapping (Foundry → Kanka, verified against KankaApiItem):
+ *   item.name              → name
+ *   item.system.description → entry
+ *   item.type              → type   (the Foundry item subtype label)
+ *   item.system.price      → price  (stringified — Kanka price is a string)
+ *   item.system.weight     → weight (stringified — Kanka weight is a string)
+ */
+export function buildItemWriteBackPayload(item: ItemWriteBackInput): PlainObject {
+    const payload: PlainObject = {};
+
+    if (typeof item.name === 'string' && item.name !== '') payload['name'] = item.name;
+    if (typeof item.type === 'string' && item.type !== '') payload['type'] = item.type;
+
+    const system = item.system;
+    if (system) {
+        const description = system['description'];
+        if (typeof description === 'string' && description !== '') payload['entry'] = description;
+
+        const price = system['price'];
+        if (typeof price === 'number' || (typeof price === 'string' && price !== '')) payload['price'] = String(price);
+
+        const weight = system['weight'];
+        if (typeof weight === 'number') {
+            payload['weight'] = String(weight);
+        } else if (typeof weight === 'object' && weight !== null) {
+            // Some systems nest weight as { value, units }; take the value.
+            const value = readProp(weight, 'value');
+            if (typeof value === 'number' || (typeof value === 'string' && value !== '')) payload['weight'] = String(value);
+        } else if (typeof weight === 'string' && weight !== '') {
+            payload['weight'] = weight;
+        }
+    }
+
+    return payload;
+}
+
+/**
+ * Stringify a Kanka id (a number at runtime) into a debounce-map key fragment.
+ * Returns undefined for anything that is not a number/string so callers can
+ * fall back without stringifying the branded-id object union.
+ */
+// eslint-disable-next-line no-restricted-syntax -- boundary: id may arrive as an opaque flag value; both branches are typeof-guarded
+function idToKey(value: unknown): string | undefined {
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'string') return value;
+    return undefined;
+}
+
+/** A journal update-method selection keyed by Kanka module type. */
+export type JournalUpdateDispatch = 'character' | 'item' | 'quest' | null;
+
+/**
+ * Choose which Kanka update endpoint a journal-name change should be pushed to,
+ * based on the entity's Kanka module type. Types without a dedicated update
+ * method return null and are skipped (logged) rather than mislabelled.
+ */
+export function selectJournalUpdate(type: KankaApiModuleType | undefined): JournalUpdateDispatch {
+    if (type === 'character' || type === 'item' || type === 'quest') return type;
+    return null;
+}
 
 // ---------------------------------------------------------------------------
 // Field mappings
@@ -711,43 +789,144 @@ function handleItemChange(item: Item): void {
     scheduleActorSync(actor, true);
 }
 
+/** Push a journal payload to the correct Kanka endpoint for its module type. */
+async function dispatchJournalUpdate(dispatch: JournalUpdateDispatch, campaignId: KankaApiId, childId: KankaApiId, payload: PlainObject): Promise<void> {
+    switch (dispatch) {
+        case 'character':
+            await api.updateCharacter(campaignId, childId, payload);
+            return;
+        case 'item':
+            await api.updateItem(campaignId, childId, payload);
+            return;
+        case 'quest':
+            await api.updateQuest(campaignId, childId, payload);
+            return;
+        case null:
+            logInfo('Journal sync-back: no update endpoint for this entity type — skipping');
+    }
+}
+
 function handleJournalUpdate(entry: JournalEntry, changes: Record<string, unknown>): void {
     if (!api.isReady) return;
-    if (!game.user?.isGM) return;
-    if (!(game.settings?.get('kanka-foundry', 'syncBackJournals') ?? false)) return;
+    if (game.user?.isGM !== true) return;
+    if (game.settings?.get('kanka-foundry', 'syncBackJournals') !== true) return;
 
     const kankaEntityId = getEntryFlag(entry, 'id');
-    const campaignIdRaw3: unknown = getEntryFlag(entry, 'campaign');
+    const campaignIdRaw3 = getEntryFlag(entry, 'campaign');
     let campaignId: KankaApiId | undefined;
     if (campaignIdRaw3 !== undefined) {
         assertType<KankaApiId>(campaignIdRaw3);
         campaignId = campaignIdRaw3;
     }
-    const snapshotRaw: unknown = getEntryFlag(entry, 'snapshot');
-    let snapshot: Record<string, unknown> | undefined;
-    if (snapshotRaw !== null && typeof snapshotRaw === 'object') {
-        assertType<Record<string, unknown>>(snapshotRaw);
-        snapshot = snapshotRaw;
-    }
-    if (!kankaEntityId || !campaignId || !snapshot) return;
-    if (changes['name'] === undefined) return;
+    const snapshot = asRecord(getEntryFlag(entry, 'snapshot'));
+    if (kankaEntityId === undefined || kankaEntityId === null || campaignId === undefined || snapshot === undefined) return;
 
-    const childIdRaw: unknown = snapshot['id'];
+    const typeRaw = getEntryFlag(entry, 'type');
+    let type: KankaApiModuleType | undefined;
+    if (typeof typeRaw === 'string') {
+        assertType<KankaApiModuleType>(typeRaw);
+        type = typeRaw;
+    }
+    const dispatch = selectJournalUpdate(type);
+
+    // Build the payload: a name change, plus (for quests) a completion change.
+    const payload: PlainObject = {};
+    if (changes['name'] !== undefined) payload['name'] = changes['name'];
+
+    if (type === 'quest') {
+        const completedRaw = getEntryFlag(entry, 'completed');
+        if (typeof completedRaw === 'boolean') {
+            const snapshotCompleted = snapshot['is_completed'];
+            if (completedRaw !== snapshotCompleted) payload['is_completed'] = completedRaw;
+        }
+    }
+
+    if (Object.keys(payload).length === 0) return;
+
+    const childIdRaw = snapshot['id'];
     assertType<KankaApiId>(childIdRaw);
     const childId: KankaApiId = childIdRaw;
-    const key = `journal-${String(kankaEntityId)}`;
+    const key = `journal-${idToKey(kankaEntityId) ?? 'unknown'}`;
     const existingTimer = pendingTimers.get(key);
-    if (existingTimer) clearTimeout(existingTimer);
+    if (existingTimer !== undefined) clearTimeout(existingTimer);
 
-    const timer = setTimeout(async () => {
+    const campaignIdFinal: KankaApiId = campaignId;
+    const timer = setTimeout(() => {
         pendingTimers.delete(key);
-        try {
-            assertType<KankaApiId>(campaignId);
-            await api.updateCharacter(campaignId, childId, { name: changes['name'] });
-            logInfo('Synced journal name change to Kanka');
-        } catch (error) {
-            logError('Failed to sync journal changes to Kanka', error);
-        }
+        void (async (): Promise<void> => {
+            try {
+                await dispatchJournalUpdate(dispatch, campaignIdFinal, childId, payload);
+                if (dispatch !== null) logInfo('Synced journal change to Kanka');
+            } catch (error) {
+                logError('Failed to sync journal changes to Kanka', error);
+            }
+        })();
+    }, DEBOUNCE_MS);
+
+    pendingTimers.set(key, timer);
+}
+
+// ---------------------------------------------------------------------------
+// World Item narrative write-back
+// ---------------------------------------------------------------------------
+
+function getItemKankaFlags(item: Item): PlainObject {
+    return readRecord(readRecord(item, 'flags'), 'kanka-foundry') ?? {};
+}
+
+function getItemViewForWriteBack(item: Item): ItemWriteBackInput {
+    return {
+        name: readString(item, 'name'),
+        type: readString(item, 'type'),
+        system: readRecord(item, 'system'),
+    };
+}
+
+/** Sync-back for WORLD items carrying a Kanka entityId flag (bridged items). */
+function handleWorldItemUpdate(item: Item): void {
+    if (!api.isReady) return;
+    if (game.user?.isGM !== true) return;
+    if (game.settings?.get('kanka-foundry', 'syncBackJournals') !== true) return;
+    // Only world items: embedded items live on an actor and are handled by the
+    // actor sync path. Bridged items are world-level documents.
+    if (item.parent instanceof Actor) return;
+
+    const flags = getItemKankaFlags(item);
+    const entityIdRaw = flags['entityId'];
+    let childId: KankaApiId | undefined;
+    if (entityIdRaw !== undefined && entityIdRaw !== null) {
+        assertType<KankaApiId>(entityIdRaw);
+        childId = entityIdRaw;
+    }
+    const campaignRaw = flags['campaign'];
+    let campaignId: KankaApiId | undefined;
+    if (campaignRaw !== undefined) {
+        assertType<KankaApiId>(campaignRaw);
+        campaignId = campaignRaw;
+    }
+    const kankaEntityIdRaw = flags['kankaEntityId'];
+    if (childId === undefined || campaignId === undefined) return;
+
+    const payload = buildItemWriteBackPayload(getItemViewForWriteBack(item));
+    if (Object.keys(payload).length === 0) return;
+
+    const key = `item-${idToKey(kankaEntityIdRaw) ?? idToKey(childId) ?? 'unknown'}`;
+    const existingTimer = pendingTimers.get(key);
+    if (existingTimer !== undefined) clearTimeout(existingTimer);
+
+    const itemName = readString(item, 'name') ?? '';
+    const childIdFinal: KankaApiId = childId;
+    const campaignIdFinal: KankaApiId = campaignId;
+    const timer = setTimeout(() => {
+        pendingTimers.delete(key);
+        void (async (): Promise<void> => {
+            try {
+                await api.updateItem(campaignIdFinal, childIdFinal, payload);
+                logInfo(`Synced item "${itemName}" narrative to Kanka`);
+            } catch (error) {
+                logError(`Failed to sync item "${itemName}" to Kanka`, error);
+            }
+        })();
     }, DEBOUNCE_MS);
 
     pendingTimers.set(key, timer);
@@ -763,7 +942,10 @@ export function registerSyncBackHooks(): void {
     });
 
     Hooks.on('createItem', (item: Item) => handleItemChange(item));
-    Hooks.on('updateItem', (item: Item) => handleItemChange(item));
+    Hooks.on('updateItem', (item: Item) => {
+        handleItemChange(item);
+        handleWorldItemUpdate(item);
+    });
     Hooks.on('deleteItem', (item: Item) => handleItemChange(item));
 
     Hooks.on('updateJournalEntry', (entry: JournalEntry, changes: Record<string, unknown>) => {

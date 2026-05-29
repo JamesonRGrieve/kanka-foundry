@@ -1,8 +1,9 @@
 import loaders from './api/typeLoaders';
 import type AbstractTypeLoader from './api/typeLoaders/AbstractTypeLoader';
 import { createOrUpdateActor } from './foundry/actorFactory';
+import { bridgeKankaItem } from './foundry/itemBridge';
 import { createJournalEntry, updateJournalEntry } from './foundry/journalEntries';
-import type { KankaApiCharacter, KankaApiChildEntity, KankaApiEntity, KankaApiId, KankaApiModuleType } from './types/kanka';
+import type { KankaApiCharacter, KankaApiChildEntity, KankaApiEntity, KankaApiId, KankaApiItem, KankaApiModuleType } from './types/kanka';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
 
@@ -31,6 +32,13 @@ async function handleEntity(loader: AbstractTypeLoader, entity: KankaApiChildEnt
             assertType<KankaApiCharacter>(entity);
             await createOrUpdateActor(entity, entityTags, campaignId, defaultType, pcTags, gameSystem);
         }
+    }
+
+    // Bridge bridgeable Kanka items to world Items cloned from a compendium.
+    // Runs alongside the journal-entry creation; a non-bridgeable item is a no-op.
+    if (loader.getType() === 'item') {
+        assertType<KankaApiItem>(entity);
+        await bridgeKankaItem(entity, campaignId);
     }
 }
 
@@ -120,5 +128,11 @@ export async function updateEntity(entry: JournalEntry, entityLookup?: KankaApiE
             assertType<KankaApiCharacter>(entity);
             await createOrUpdateActor(entity, entityTags, campaignId, defaultType2, pcTags2, gameSystem2);
         }
+    }
+
+    if (type === 'item') {
+        assertType<KankaApiItem>(entity);
+        assertType<KankaApiId>(campaignId);
+        await bridgeKankaItem(entity, campaignId);
     }
 }

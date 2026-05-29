@@ -224,6 +224,18 @@ export default class KankaApi {
         return result.data;
     }
 
+    public async updateItem(campaignId: KankaApiId, id: KankaApiId, data: Record<string, unknown>): Promise<KankaApiItem> {
+        type Result = KankaApiResult<KankaApiItem>;
+        const result = await this.#fetcher.patch<Result>(`campaigns/${String(campaignId)}/items/${String(id)}`, data);
+        return result.data;
+    }
+
+    public async updateQuest(campaignId: KankaApiId, id: KankaApiId, data: Record<string, unknown>): Promise<KankaApiQuest> {
+        type Result = KankaApiResult<KankaApiQuest>;
+        const result = await this.#fetcher.patch<Result>(`campaigns/${String(campaignId)}/quests/${String(id)}`, data);
+        return result.data;
+    }
+
     // Entity attribute methods
 
     public async getEntityAttributes(campaignId: KankaApiId, entityId: KankaApiEntityId): Promise<KankaApiAttribute[]> {

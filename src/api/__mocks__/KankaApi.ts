@@ -34,5 +34,8 @@ export default vi.fn(function (this: Record<string, unknown>) {
     this['getAllEvents'] = vi.fn();
     this['getEntity'] = vi.fn();
     this['getAllEntities'] = vi.fn();
+    this['updateCharacter'] = vi.fn();
+    this['updateItem'] = vi.fn();
+    this['updateQuest'] = vi.fn();
     this['baseUrl'] = 'https://api.kanka.io/1.0';
 });

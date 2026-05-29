@@ -11,6 +11,7 @@ import registerHandlebarsHelpers from '../../handlebars/registerHandlebarsHelper
 import { logError } from '../../util/logger';
 import { registerActorSheetButtons } from '../actorSheetButton';
 import { registerCampaignDescriptionHooks } from '../campaignJournal';
+import { bridgeKankaItem } from '../itemBridge';
 import { showError, showWarning } from '../notifications';
 import { registerSettings } from '../settings';
 import { registerSyncBackHooks } from '../syncBack';
@@ -101,6 +102,9 @@ export default function init(): void {
         const rawMod: unknown = game.modules?.get('kanka-foundry');
         if (rawMod !== null && typeof rawMod === 'object') {
             Reflect.set(rawMod, 'eventTracker', new EventTrackerApplication());
+            // Public API surface (macros + e2e): the item bridge, callable as
+            // game.modules.get('kanka-foundry').api.bridgeKankaItem(entity, campaignId).
+            Reflect.set(rawMod, 'api', { bridgeKankaItem });
         }
     } catch (error) {
         logError(error);
