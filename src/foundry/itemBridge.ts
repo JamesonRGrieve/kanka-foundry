@@ -219,9 +219,15 @@ export function buildWorldItemData(
  * Bridge a Kanka item into a Foundry world Item by cloning a compendium Item
  * referenced through the `foundry_uuid` attribute.
  *
- * - No `foundry_uuid`, or an unresolvable UUID → does nothing mechanical and
- *   lets the normal journal import proceed. Never throws into the pipeline.
- * - Resolvable UUID → deep-clones the compendium Item, applies the
+ * Only **variant-necessary** items are bridged: the item must carry
+ * `foundry_variant_overrides` (a spoiler-free name, stat deltas, …) that make it
+ * differ from its compendium base. A raw item with no overrides is simply an
+ * instance of its homebrew/compendium base — the GM drops that compendium item
+ * onto the actor directly, so the bridge mints no world Item for it.
+ *
+ * - No `foundry_uuid`, no overrides, or an unresolvable UUID → does nothing
+ *   mechanical and lets the normal journal import proceed. Never throws.
+ * - Bridgeable → deep-clones the compendium Item, applies the
  *   `foundry_variant_overrides`, stamps `system.variantOf` + Kanka flags +
  *   `_stats.compendiumSource`, and creates-or-updates a world Item (idempotent on
  *   `flags.kanka-foundry.entityId`).
@@ -237,13 +243,20 @@ export async function bridgeKankaItem(entity: KankaApiItem, campaignId: KankaApi
             return undefined;
         }
 
+        const overrides = parseVariantOverrides(getItemAttribute(attributes, FOUNDRY_VARIANT_OVERRIDES_ATTR));
+        if (Object.keys(overrides).length === 0) {
+            // Raw compendium item (no variant overrides): the GM places the
+            // compendium base on the actor directly — the bridge mints no world Item.
+            logInfo(`Item bridge: "${entity.name}" has no variant overrides — raw compendium item, not creating a world Item`);
+            return undefined;
+        }
+
         const source = await resolveItemSource(uuid);
         if (!source) {
             logInfo(`Item bridge: UUID "${uuid}" for "${entity.name}" did not resolve to an Item — skipping mechanical bridge`);
             return undefined;
         }
 
-        const overrides = parseVariantOverrides(getItemAttribute(attributes, FOUNDRY_VARIANT_OVERRIDES_ATTR));
         const folder = await ensureItemFolder();
         const data = buildWorldItemData(source, entity, uuid, overrides, campaignId, folder?.id);
 
