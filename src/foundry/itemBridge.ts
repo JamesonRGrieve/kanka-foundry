@@ -63,14 +63,15 @@ export function setByPath(target: PlainObject, path: string, value: unknown): vo
 }
 
 /**
- * Apply a flat dot-path override map onto a `system` object. Each key is a
- * dot-path relative to `system`. Returns the (mutated) system object.
+ * Apply a flat dot-path override map onto a target object. Each key is a
+ * dot-path relative to the target root (e.g. `name`, `img`, or
+ * `system.clip.dh2.value`). Returns the (mutated) target.
  */
-export function applyVariantOverrides(system: PlainObject, overrides: PlainObject): PlainObject {
+export function applyVariantOverrides(target: PlainObject, overrides: PlainObject): PlainObject {
     for (const [path, value] of Object.entries(overrides)) {
-        setByPath(system, path, value);
+        setByPath(target, path, value);
     }
-    return system;
+    return target;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +169,14 @@ async function ensureItemFolder(): Promise<FolderLike | undefined> {
  * Build the create/update payload for a world Item from a cloned compendium
  * Item source, the Kanka item, and the resolved compendium UUID. Pure given
  * its inputs (the clone is mutated in place).
+ *
+ * The resulting world Item is a *variant* of the compendium base it was cloned
+ * from: `system.variantOf` points back at that base (per the pack variant
+ * schema), and the `foundry_variant_overrides` are applied as a document-rooted
+ * dot-path patch. The patch may set a spoiler-free top-level `name`/`img` (the
+ * variant's own player-facing identity) as well as `system.*` stat deltas; it is
+ * applied last so an explicit `name` override wins over the entity's GM-facing
+ * true name. With no `name` override the world Item keeps the entity name.
  */
 export function buildWorldItemData(
     clone: FoundryItemSource,
@@ -177,12 +186,13 @@ export function buildWorldItemData(
     campaignId: KankaApiId,
     folderId: string | undefined,
 ): PlainObject {
-    applyVariantOverrides(clone.system, overrides);
-
     const stats = readRecord(clone, '_stats') ?? {};
     stats['compendiumSource'] = compendiumUuid;
 
-    return {
+    // Mark the world Item as a variant of the compendium base it was cloned from.
+    clone.system['variantOf'] = compendiumUuid;
+
+    const data: PlainObject = {
         ...clone,
         name: entity.name,
         system: clone.system,
@@ -199,6 +209,10 @@ export function buildWorldItemData(
             },
         },
     };
+
+    applyVariantOverrides(data, overrides);
+
+    return data;
 }
 
 /**
@@ -208,8 +222,9 @@ export function buildWorldItemData(
  * - No `foundry_uuid`, or an unresolvable UUID → does nothing mechanical and
  *   lets the normal journal import proceed. Never throws into the pipeline.
  * - Resolvable UUID → deep-clones the compendium Item, applies the
- *   `foundry_variant_overrides`, stamps Kanka flags + `_stats.compendiumSource`,
- *   and creates-or-updates a world Item (idempotent on `flags.kanka-foundry.entityId`).
+ *   `foundry_variant_overrides`, stamps `system.variantOf` + Kanka flags +
+ *   `_stats.compendiumSource`, and creates-or-updates a world Item (idempotent on
+ *   `flags.kanka-foundry.entityId`).
  *
  * Returns the created/updated world Item's id, or undefined when nothing was done.
  */

@@ -146,11 +146,35 @@ describe('buildWorldItemData', () => {
         expect(data['name']).toBe('Solenne Pattern Laspistol');
     });
 
-    it('applies variant overrides into system', () => {
+    it('applies variant overrides as a document-rooted dot-path patch into system', () => {
         const entity = createItem();
-        const data = buildWorldItemData(freshClone(), entity, 'Compendium.x.Item.abc', { 'clip.value': 30 }, 4711, 'folder-1');
+        const data = buildWorldItemData(freshClone(), entity, 'Compendium.x.Item.abc', { 'system.clip.value': 30 }, 4711, 'folder-1');
         const system = data['system'];
-        expect(system).toEqual({ clip: { value: 30, max: 30 }, range: 30 });
+        expect(system).toEqual({ clip: { value: 30, max: 30 }, range: 30, variantOf: 'Compendium.x.Item.abc' });
+    });
+
+    it('stamps system.variantOf with the compendium UUID even with no overrides', () => {
+        const entity = createItem();
+        const data = buildWorldItemData(freshClone(), entity, 'Compendium.x.Item.abc', {}, 4711, 'folder-1');
+        expect(data['system']).toMatchObject({ variantOf: 'Compendium.x.Item.abc' });
+    });
+
+    it('lets a name override (the spoiler-free variant name) win over the entity name', () => {
+        const entity = createItem({ name: 'Inferno Pistol' });
+        const data = buildWorldItemData(freshClone(), entity, 'Compendium.x.Item.abc', { name: 'Mysterious Inquisitorial Pistol' }, 4711, 'folder-1');
+        expect(data['name']).toBe('Mysterious Inquisitorial Pistol');
+    });
+
+    it('keeps the entity name when a non-name override is applied', () => {
+        const entity = createItem({ name: 'Inferno Pistol' });
+        const data = buildWorldItemData(freshClone(), entity, 'Compendium.x.Item.abc', { 'system.clip.value': 1 }, 4711, 'folder-1');
+        expect(data['name']).toBe('Inferno Pistol');
+    });
+
+    it('applies an img override onto the cloned image', () => {
+        const entity = createItem();
+        const data = buildWorldItemData(freshClone(), entity, 'Compendium.x.Item.abc', { img: 'icons/mystery.png' }, 4711, 'folder-1');
+        expect(data['img']).toBe('icons/mystery.png');
     });
 
     it('stamps _stats.compendiumSource with the compendium UUID', () => {

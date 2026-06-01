@@ -151,6 +151,76 @@ function createActorData(
     };
 }
 
+/** Top-level `system.*` keys the Kanka sync owns outright (narrative/identity);
+ *  everything else under `system` is mechanical and is conflict-checked on update. */
+const NARRATIVE_SYSTEM_KEYS = new Set(['bio', 'faction', 'description']);
+
+/** Recursively flatten a plain object to `dot.path` -> leaf-value entries.
+ *  Arrays and non-plain values are treated as leaves. */
+function flattenLeaves(obj: Record<string, unknown>, prefix: string): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+        const path = prefix === '' ? key : `${prefix}.${key}`;
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+            Object.assign(out, flattenLeaves(value as Record<string, unknown>, path));
+        } else {
+            out[path] = value;
+        }
+    }
+    return out;
+}
+
+/** Read a `dot.path` value out of a loosely-typed object, or undefined. */
+function readByPath(root: unknown, path: string): unknown {
+    let cursor: unknown = root;
+    for (const part of path.split('.')) {
+        if (cursor === null || typeof cursor !== 'object') return undefined;
+        // eslint-disable-next-line no-restricted-syntax -- boundary: walking an untyped actor.system tree
+        cursor = (cursor as Record<string, unknown>)[part];
+    }
+    return cursor;
+}
+
+/**
+ * Build the update payload for an existing actor. Narrative fields (bio,
+ * faction, description) and identity (name/img/flags) are always applied.
+ * Mechanical stats (characteristics, wounds, fate, xp, originPath, …) are
+ * conflict-checked leaf-by-leaf against the actor's current values: a value is
+ * applied only when the actor has none or it already matches; a genuine
+ * conflict is REFUSED (the actor keeps its value) and collected for a warning.
+ * This stops a sync from silently clobbering a built/advanced PC — or
+ * re-stamping origin grants — when Kanka holds stale numbers.
+ */
+function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unknown>): { update: Record<string, unknown>; conflicts: string[] } {
+    const system = (actorData['system'] ?? {}) as Record<string, unknown>;
+    // eslint-disable-next-line no-restricted-syntax -- boundary: actor.system is loosely typed at the Foundry boundary
+    const currentSystem = ((existing as unknown as { system?: unknown }).system ?? {}) as Record<string, unknown>;
+
+    const update: Record<string, unknown> = {
+        name: actorData['name'],
+        img: actorData['img'],
+        flags: actorData['flags'],
+    };
+    const conflicts: string[] = [];
+
+    for (const [topKey, value] of Object.entries(system)) {
+        if (NARRATIVE_SYSTEM_KEYS.has(topKey)) {
+            update[`system.${topKey}`] = value;
+            continue;
+        }
+        const leaves = value !== null && typeof value === 'object' && !Array.isArray(value) ? flattenLeaves(value as Record<string, unknown>, topKey) : { [topKey]: value };
+        for (const [path, incoming] of Object.entries(leaves)) {
+            const current = readByPath(currentSystem, path);
+            if (current !== undefined && current !== null && current !== incoming) {
+                conflicts.push(`${path}: actor=${String(current)} != kanka=${String(incoming)}`);
+                continue;
+            }
+            update[`system.${path}`] = incoming;
+        }
+    }
+    return { update, conflicts };
+}
+
 /**
  * Find an existing Foundry Actor by its Kanka entity ID.
  */
@@ -173,12 +243,12 @@ export async function createOrUpdateActor(
     const actorData = createActorData(entity, entityTags, campaignId, defaultActorType, pcTags, gameSystem);
 
     if (existing) {
-        await existing.update({
-            name: actorData['name'],
-            img: actorData['img'],
-            system: actorData['system'],
-            flags: actorData['flags'],
-        } as Record<string, unknown>);
+        const { update, conflicts } = buildConflictAwareUpdate(existing, actorData);
+        if (conflicts.length > 0) {
+            // eslint-disable-next-line no-console -- surfacing a sync stat conflict to the GM console is the intended behavior
+            console.warn(`[kanka-foundry] "${entity.name}": refused ${conflicts.length} conflicting stat write(s) from Kanka (actor value kept): ${conflicts.join('; ')}`);
+        }
+        await existing.update(update);
         // Foundry copies actor.img into prototypeToken.texture.src by default
         // on create, so an unforced token sync will bail (the current value
         // looks "user-set"). Force it on every import so the canonical Kanka
