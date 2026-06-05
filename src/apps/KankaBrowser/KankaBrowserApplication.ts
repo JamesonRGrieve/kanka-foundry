@@ -1,5 +1,6 @@
 import api from '../../api';
 import NotAuthenticatedError from '../../api/NotAuthenticatedError';
+import loaders from '../../api/typeLoaders';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
 
@@ -8,9 +9,18 @@ import { showError } from '../../foundry/notifications';
 import type { KankaSettings } from '../../foundry/settings';
 import { createEntities, createEntity, updateEntity } from '../../syncEntities';
 import EntityType from '../../types/EntityType';
-import type { KankaApiCampaign, KankaApiEntity, KankaApiId } from '../../types/kanka';
+import type { KankaApiCampaign, KankaApiEntity, KankaApiModuleType } from '../../types/kanka';
 import groupBy from '../../util/groupBy';
 import { logError } from '../../util/logger';
+import {
+    HIERARCHY_PARENT_FIELDS,
+    type HierarchyMeta,
+    buildAncestorPath,
+    buildHierarchyMeta,
+    idToNumber,
+    isHierarchicalType,
+    sortByHierarchy,
+} from './hierarchy';
 import campaignTemplate from './templates/campaign.hbs';
 import entitiesTemplate from './templates/entities.hbs';
 import loadingTemplate from './templates/loading.hbs';
@@ -62,6 +72,29 @@ const entityTypes: Partial<Record<EntityType, { icon: string }>> = {
     },
 };
 
+/**
+ * Browser `EntityType` (a nominal enum) → Kanka API `KankaApiModuleType` (a
+ * string-literal union) for the `loaders` registry lookup. The runtime strings
+ * are identical, but the two are not assignable to one another, so this typed,
+ * exhaustive table crosses the gap without an unchecked `as`. `campaign` has no
+ * importable module and maps to null.
+ */
+const ENTITY_TO_MODULE: Readonly<Record<EntityType, KankaApiModuleType | null>> = {
+    [EntityType.ability]: 'ability',
+    [EntityType.campaign]: null,
+    [EntityType.character]: 'character',
+    [EntityType.creature]: 'creature',
+    [EntityType.event]: 'event',
+    [EntityType.family]: 'family',
+    [EntityType.item]: 'item',
+    [EntityType.journal]: 'journal',
+    [EntityType.location]: 'location',
+    [EntityType.note]: 'note',
+    [EntityType.organisation]: 'organisation',
+    [EntityType.quest]: 'quest',
+    [EntityType.race]: 'race',
+};
+
 type RenderContext = ApplicationV2.RenderContext &
     Partial<{
         isLoading: boolean;
@@ -82,12 +115,9 @@ type RenderContext = ApplicationV2.RenderContext &
 export default class KankaBrowserApplication extends HandlebarsApplicationMixin(ApplicationV2<RenderContext>) {
     #search = '';
     #entities: KankaApiEntity[] | null = null;
-    #locationMeta: Map<number, { parentId: number | null; name: string }> = new Map();
-
-    static #idToNumber(id: KankaApiId | null | undefined): number | null {
-        if (id === null || id === undefined) return null;
-        return typeof id === 'number' ? id : Number(id);
-    }
+    /** One `childId → { parentId, name }` map per hierarchical type present in the
+     *  campaign, used to indent the import picker by ancestry. */
+    #hierarchyMeta: Map<EntityType, HierarchyMeta> = new Map();
     #allCampaigns: KankaApiCampaign[] | null = null;
     #campaign: KankaApiCampaign | null = null;
     readonly #hooks: Partial<Record<Hooks.HookName, number>> = {};
@@ -331,49 +361,25 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
                 };
             });
 
-        const isLocationOnly = type === EntityType.location && mapped.every((e) => e.module.code === EntityType.location);
-
-        if (isLocationOnly && this.#locationMeta.size > 0) {
-            return this.#sortLocationsHierarchically(mapped);
+        // Indent every type that has a native Kanka tree (location, organisation,
+        // family, item, journal, note, quest, race, event, creature, ability) by
+        // its ancestry. Types without a tree — notably characters — fall through
+        // to a flat alphabetical list.
+        if (type !== undefined && isHierarchicalType(type)) {
+            const meta = this.#hierarchyMeta.get(type);
+            if (meta !== undefined && meta.size > 0) {
+                const decorated = mapped.map((entity) => {
+                    const path = buildAncestorPath(meta, idToNumber(entity.child_id));
+                    // An entity missing from the meta map (e.g. the parent list failed
+                    // to load that row) still renders, just at the root with its name.
+                    const sortPath = path.length > 0 ? path : [entity.name];
+                    return { entity, depth: Math.max(0, sortPath.length - 1), sortPath };
+                });
+                return sortByHierarchy(decorated);
+            }
         }
 
         return mapped.toSorted((a, b) => a.name.localeCompare(b.name));
-    }
-
-    #sortLocationsHierarchically<T extends KankaApiEntity & { state: unknown }>(entities: T[]): Array<T & { depth: number }> {
-        const meta = this.#locationMeta;
-
-        // Build the ancestor-name path (root → self) for each entity, walking parentId with a cycle guard.
-        const decorate = (entity: T): { entity: T; depth: number; sortPath: string[] } => {
-            const path: string[] = [];
-            const seen = new Set<number>();
-            let currentId: number | null = KankaBrowserApplication.#idToNumber(entity.child_id);
-
-            while (currentId !== null && !seen.has(currentId)) {
-                seen.add(currentId);
-                const node = meta.get(currentId);
-                const label = node?.name ?? entity.name;
-                path.unshift(label);
-                currentId = node?.parentId ?? null;
-            }
-
-            // depth = number of ancestors (path length minus self)
-            const depth = Math.max(0, path.length - 1);
-            return { entity, depth, sortPath: path };
-        };
-
-        const decorated = entities.map(decorate);
-
-        decorated.sort((a, b) => {
-            const len = Math.min(a.sortPath.length, b.sortPath.length);
-            for (let i = 0; i < len; i++) {
-                const cmp = (a.sortPath[i] ?? '').localeCompare(b.sortPath[i] ?? '');
-                if (cmp !== 0) return cmp;
-            }
-            return a.sortPath.length - b.sortPath.length;
-        });
-
-        return decorated.map(({ entity, depth }) => ({ ...entity, depth }));
     }
 
     protected setLoadingState(button: HTMLButtonElement): void {
@@ -413,35 +419,57 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         });
     }
 
-    protected async loadLocationMeta(campaignId: number): Promise<Map<number, { parentId: number | null; name: string }>> {
-        const map = new Map<number, { parentId: number | null; name: string }>();
+    /**
+     * Fetch the parent map for each requested hierarchical type. Each type is
+     * loaded independently and resiliently — a type whose parentage can't be
+     * fetched simply renders flat instead of failing the whole browser load.
+     */
+    protected async loadHierarchyMeta(campaignId: number, types: EntityType[]): Promise<Map<EntityType, HierarchyMeta>> {
+        const result = new Map<EntityType, HierarchyMeta>();
 
-        try {
-            const locations = await api.getAllLocations(campaignId);
-            for (const location of locations) {
-                const id = KankaBrowserApplication.#idToNumber(location.id);
-                if (id === null) continue;
-                const parentId = KankaBrowserApplication.#idToNumber(location.location_id ?? location.parent_location_id ?? null);
-                map.set(id, { parentId, name: location.name });
-            }
-        } catch (error) {
-            // Resilient fallback: if location parentage can't be fetched, locations render flat.
-            logError('Failed to load location hierarchy; falling back to flat list', error);
+        await Promise.all(
+            types.map(async (type) => {
+                const moduleType = ENTITY_TO_MODULE[type];
+                const loader = moduleType !== null ? loaders.get(moduleType) : undefined;
+                const parentFields = HIERARCHY_PARENT_FIELDS[type];
+                if (loader === undefined || parentFields === undefined) return;
+
+                try {
+                    // loadAll uses `related=1`, so each entity carries its parent reference.
+                    const list = await loader.loadAll(campaignId);
+                    result.set(type, buildHierarchyMeta(list, parentFields));
+                } catch (error) {
+                    logError(`Failed to load ${type} hierarchy; falling back to flat list`, error);
+                }
+            }),
+        );
+
+        return result;
+    }
+
+    /**
+     * Hierarchical types worth a parent-list request: those with at least two
+     * entities present (a single entity can't show any nesting). This bounds the
+     * extra API calls to the campaign's actual structure.
+     */
+    static #hierarchicalTypesToLoad(entities: KankaApiEntity[]): EntityType[] {
+        const counts = new Map<string, number>();
+        for (const entity of entities) {
+            const code = entity.module.code;
+            counts.set(code, (counts.get(code) ?? 0) + 1);
         }
 
-        return map;
+        return Object.values(EntityType).filter((type) => isHierarchicalType(type) && (counts.get(type) ?? 0) >= 2);
     }
 
     protected async loadDataForCampaign(campaignId?: number) {
-        if (!campaignId) return { campaign: null, entities: null, locationMeta: new Map<number, { parentId: number | null; name: string }>() };
+        if (!campaignId) return { campaign: null, entities: null, hierarchyMeta: new Map<EntityType, HierarchyMeta>() };
 
-        const [campaign, entities, locationMeta] = await Promise.all([
-            api.getCampaign(campaignId),
-            this.loadEntities(campaignId),
-            this.loadLocationMeta(campaignId),
-        ]);
+        const [campaign, entities] = await Promise.all([api.getCampaign(campaignId), this.loadEntities(campaignId)]);
 
-        return { campaign, entities, locationMeta };
+        const hierarchyMeta = await this.loadHierarchyMeta(campaignId, KankaBrowserApplication.#hierarchicalTypesToLoad(entities ?? []));
+
+        return { campaign, entities, hierarchyMeta };
     }
 
     protected setupData(this: KankaBrowserApplication): void {
@@ -453,15 +481,15 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         this.#allCampaigns = null;
         this.#campaign = null;
         this.#entities = null;
-        this.#locationMeta = new Map();
+        this.#hierarchyMeta = new Map();
         this.#isLoading = true;
 
         Promise.all([api.getAllCampaigns(), this.loadDataForCampaign(campaignId)])
-            .then(([allCampaigns, { campaign, entities, locationMeta }]) => {
+            .then(([allCampaigns, { campaign, entities, hierarchyMeta }]) => {
                 this.#allCampaigns = allCampaigns;
                 this.#campaign = campaign;
                 this.#entities = entities;
-                this.#locationMeta = locationMeta;
+                this.#hierarchyMeta = hierarchyMeta;
                 this.#isLoading = false;
                 this.render({ force: true });
             })
