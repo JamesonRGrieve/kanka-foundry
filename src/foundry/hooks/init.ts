@@ -14,6 +14,7 @@ import { registerCampaignDescriptionHooks } from '../campaignJournal';
 import { bridgeKankaItem } from '../itemBridge';
 import { showError, showWarning } from '../notifications';
 import { registerSettings } from '../settings';
+import { syncTokenImage } from '../tokenImage';
 import { registerSyncBackHooks } from '../syncBack';
 
 function setToken(token: string): void {
@@ -104,7 +105,8 @@ export default function init(): void {
             Reflect.set(rawMod, 'eventTracker', new EventTrackerApplication());
             // Public API surface (macros + e2e): the item bridge, callable as
             // game.modules.get('kanka-foundry').api.bridgeKankaItem(entity, campaignId).
-            Reflect.set(rawMod, 'api', { bridgeKankaItem });
+            // syncTokenImage is exposed for macros + the token-frame e2e.
+            Reflect.set(rawMod, 'api', { bridgeKankaItem, syncTokenImage });
         }
     } catch (error) {
         logError(error);

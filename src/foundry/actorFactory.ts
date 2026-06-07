@@ -155,14 +155,20 @@ function createActorData(
  *  everything else under `system` is mechanical and is conflict-checked on update. */
 const NARRATIVE_SYSTEM_KEYS = new Set(['bio', 'faction', 'description']);
 
+/** Type guard for plain-object tree nodes — replaces `as Record<...>` casts,
+ *  which type-coverage --strict counts as uncovered. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 /** Recursively flatten a plain object to `dot.path` -> leaf-value entries.
  *  Arrays and non-plain values are treated as leaves. */
 function flattenLeaves(obj: Record<string, unknown>, prefix: string): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
         const path = prefix === '' ? key : `${prefix}.${key}`;
-        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-            Object.assign(out, flattenLeaves(value as Record<string, unknown>, path));
+        if (isPlainRecord(value)) {
+            Object.assign(out, flattenLeaves(value, path));
         } else {
             out[path] = value;
         }
@@ -174,9 +180,8 @@ function flattenLeaves(obj: Record<string, unknown>, prefix: string): Record<str
 function readByPath(root: unknown, path: string): unknown {
     let cursor: unknown = root;
     for (const part of path.split('.')) {
-        if (cursor === null || typeof cursor !== 'object') return undefined;
-        // eslint-disable-next-line no-restricted-syntax -- boundary: walking an untyped actor.system tree
-        cursor = (cursor as Record<string, unknown>)[part];
+        if (!isPlainRecord(cursor)) return undefined;
+        cursor = cursor[part];
     }
     return cursor;
 }
@@ -192,9 +197,11 @@ function readByPath(root: unknown, path: string): unknown {
  * re-stamping origin grants — when Kanka holds stale numbers.
  */
 function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unknown>): { update: Record<string, unknown>; conflicts: string[] } {
-    const system = (actorData['system'] ?? {}) as Record<string, unknown>;
-    // eslint-disable-next-line no-restricted-syntax -- boundary: actor.system is loosely typed at the Foundry boundary
-    const currentSystem = ((existing as unknown as { system?: unknown }).system ?? {}) as Record<string, unknown>;
+    const systemRaw = actorData['system'];
+    const system: Record<string, unknown> = isPlainRecord(systemRaw) ? systemRaw : {};
+    // actor.system is loosely typed at the Foundry boundary — narrow via guard
+    const currentRaw: unknown = Reflect.get(existing, 'system');
+    const currentSystem: Record<string, unknown> = isPlainRecord(currentRaw) ? currentRaw : {};
 
     const update: Record<string, unknown> = {
         name: actorData['name'],
@@ -208,7 +215,7 @@ function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unk
             update[`system.${topKey}`] = value;
             continue;
         }
-        const leaves = value !== null && typeof value === 'object' && !Array.isArray(value) ? flattenLeaves(value as Record<string, unknown>, topKey) : { [topKey]: value };
+        const leaves = isPlainRecord(value) ? flattenLeaves(value, topKey) : { [topKey]: value };
         for (const [path, incoming] of Object.entries(leaves)) {
             const current = readByPath(currentSystem, path);
             if (current !== undefined && current !== null && current !== incoming) {
@@ -246,7 +253,9 @@ export async function createOrUpdateActor(
         const { update, conflicts } = buildConflictAwareUpdate(existing, actorData);
         if (conflicts.length > 0) {
             // eslint-disable-next-line no-console -- surfacing a sync stat conflict to the GM console is the intended behavior
-            console.warn(`[kanka-foundry] "${entity.name}": refused ${conflicts.length} conflicting stat write(s) from Kanka (actor value kept): ${conflicts.join('; ')}`);
+            console.warn(
+                `[kanka-foundry] "${entity.name}": refused ${conflicts.length} conflicting stat write(s) from Kanka (actor value kept): ${conflicts.join('; ')}`,
+            );
         }
         await existing.update(update);
         // Foundry copies actor.img into prototypeToken.texture.src by default
