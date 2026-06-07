@@ -13,14 +13,15 @@ interface ProtoToken {
 type TokenPatch = Record<string, unknown>;
 
 /**
- * Sync an actor's prototype token from a dedicated token image.
+ * Prototype-token sync — two regimes (see buildTokenPatch):
  *
- * Priority:
- *   1. Kanka entity asset named "token" (dedicated token image)
- *   2. Actor portrait (fallback)
+ *   wh40k-rpg: plain portrait as the token texture +
+ *   `flags.wh40k-rpg.tokenFrame`; the system GPU-masks a circular bust at
+ *   draw time. No pre-framed Kanka asset involved.
  *
- * Downloads the token image locally to avoid CORS issues,
- * then sets it as the prototype token texture.
+ *   any other system: the pre-framed circular Kanka entity asset named
+ *   "token" (canonical redirect URL), falling back to the actor portrait,
+ *   mirrored into both texture.src and ring.subject.texture.
  */
 function findPlayerRingDefaults(): TokenPatch | null {
     // eslint-disable-next-line no-restricted-syntax -- boundary: Foundry runtime global `game.actors`; narrowed by assertType below

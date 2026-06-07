@@ -19,3 +19,6 @@
 /.important-coverage.json
 /.theme-coverage.json
 /.animation-coverage.json
+
+# e2e screenshot artifacts (regenerated every run)
+/tests/e2e/screenshots/
