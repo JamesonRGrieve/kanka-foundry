@@ -1,0 +1,6 @@
+# pnpm v10 will not run prepare/build scripts for git-hosted dependencies unless
+# they are explicitly allowlisted. @league-of-foundry-developers/foundry-vtt-types
+# is fetched from GitHub and runs a prepare step; without this entry the install
+# aborts with ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED (breaks deploy.sh's plugin build).
+onlyBuiltDependencies:
+  - "@league-of-foundry-developers/foundry-vtt-types"
