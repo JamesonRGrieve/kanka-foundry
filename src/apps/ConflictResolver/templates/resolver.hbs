@@ -1,0 +1,38 @@
+<section class="knk:p-2 knk:flex knk:flex-col knk:gap-2">
+    <p class="knk:text-sm knk:opacity-80">{{kankaLocalize 'conflicts' 'intro'}}</p>
+
+    <div class="knk:flex knk:gap-2">
+        <button type="button" class="knk:flex-1" data-action="takeAllKanka">{{kankaLocalize 'conflicts' 'takeAllKanka'}}</button>
+        <button type="button" class="knk:flex-1" data-action="takeAllFoundry">{{kankaLocalize 'conflicts' 'takeAllFoundry'}}</button>
+    </div>
+
+    <div class="knk:flex knk:font-bold knk:border-b knk:pb-1 knk:gap-2">
+        <div class="knk:w-1/2">{{kankaLocalize 'conflicts' 'kanka'}}</div>
+        <div class="knk:w-1/2">{{kankaLocalize 'conflicts' 'foundry'}}</div>
+    </div>
+
+    {{#each rows}}
+        <div class="knk:border-b knk:py-1" data-conflict-id="{{this.id}}">
+            <div class="knk:text-xs knk:opacity-70 knk:mb-1">{{this.entityName}} — {{this.label}}</div>
+            <div class="knk:flex knk:gap-2">
+                <label class="knk:w-1/2 knk:flex knk:gap-1 knk:items-start knk:cursor-pointer">
+                    <input type="radio" name="choice-{{this.id}}" value="kanka" />
+                    <span class="knk:break-all knk:text-sm">
+                        {{#if this.kankaDisplay}}{{this.kankaDisplay}}{{else}}<em class="knk:opacity-60">{{kankaLocalize 'conflicts' 'empty'}}</em>{{/if}}
+                        {{#if this.isSnapshot}}<em class="knk:block knk:opacity-60 knk:text-xs">{{kankaLocalize 'conflicts' 'reimportNote'}}</em>{{/if}}
+                    </span>
+                </label>
+                <label class="knk:w-1/2 knk:flex knk:gap-1 knk:items-start knk:cursor-pointer">
+                    <input type="radio" name="choice-{{this.id}}" value="foundry" />
+                    <span class="knk:break-all knk:text-sm">
+                        {{#if this.foundryDisplay}}{{this.foundryDisplay}}{{else}}<em class="knk:opacity-60">{{kankaLocalize 'conflicts' 'empty'}}</em>{{/if}}
+                    </span>
+                </label>
+            </div>
+        </div>
+    {{/each}}
+
+    <div class="knk:mt-2 knk:flex knk:justify-end">
+        <button type="button" data-action="resolveSelected">{{kankaLocalize 'conflicts' 'resolve'}}</button>
+    </div>
+</section>

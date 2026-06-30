@@ -3,6 +3,19 @@ KANKA:
         initializationError: |
             There was an error when initializing Kanka-Foundry. This might be due to problems with the Kanka-API or
             with your Token or Campaign settings.
+    conflicts:
+        title: Resolve Kanka Conflicts
+        intro: Foundry and Kanka disagree on the fields below. Choose which side to keep for each. Unselected rows are left unchanged and shown again next time.
+        kanka: Kanka
+        foundry: Foundry
+        takeAllKanka: Keep all Kanka values
+        takeAllFoundry: Keep all Foundry values
+        resolve: Apply choices
+        empty: (empty)
+        reimportNote: Choosing Kanka requires a manual re-import.
+        reimportRequired: This collection must be re-imported from Kanka to apply its value.
+        allResolved: All Kanka conflicts resolved.
+
     sidebar:
         button: Import from Kanka
 

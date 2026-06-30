@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 
 declare module '*.hbs' {
-    export = string;
+    const template: string;
+    export default template;
 }
 
 type ConstructorOf<C> = { new (...args: unknown[]): C };

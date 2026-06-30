@@ -3,6 +3,9 @@ import type { KankaApiAttribute, KankaApiEntityId, KankaApiId, KankaApiModuleTyp
 import { logError, logInfo } from '../util/logger';
 import { type PlainObject, asRecord, readProp, readRecord, readString } from '../util/reflection';
 import { BIO_MAP, CHARACTERISTIC_REVERSE_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_REVERSE_MAP } from './actorAttributeMaps';
+import { addConflicts } from './conflicts/conflictStore';
+import { type ActorFieldConflict, type ConflictChoice, type ConflictKind, type StoredConflict, conflictId, isNumericKind } from './conflicts/types';
+import { showWarning } from './notifications';
 import { syncTokenImage } from './tokenImage';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
@@ -281,7 +284,18 @@ function buildItemsSnapshot(actor: Actor, itemType: string): string {
 interface ReconcileResult {
     toKanka: Map<string, string>;
     toFoundry: Record<string, unknown>;
-    conflicts: string[];
+    conflicts: ActorFieldConflict[];
+}
+
+function fieldConflict(
+    kind: ConflictKind,
+    kankaAttr: string,
+    foundryPath: string,
+    label: string,
+    foundryValue: unknown,
+    kankaValue: unknown,
+): ActorFieldConflict {
+    return { kind, kankaAttr, foundryPath, label, foundryValue: String(foundryValue), kankaValue: String(kankaValue) };
 }
 
 /**
@@ -292,7 +306,7 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
     const system = getActorSystem(actor);
     const toKanka = new Map<string, string>();
     const toFoundry: Record<string, unknown> = {};
-    const conflicts: string[] = [];
+    const conflicts: ActorFieldConflict[] = [];
 
     // --- Characteristics ---
     const charsRaw: unknown = system['characteristics'];
@@ -311,7 +325,7 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
             } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
                 toKanka.set(kankaName, String(foundryVal));
             } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
-                conflicts.push(`${kankaName}: Foundry=${foundryVal}, Kanka=${kankaVal}`);
+                conflicts.push(fieldConflict('characteristic', kankaName, `characteristics.${foundryKey}.base`, kankaName, foundryVal, kankaVal));
             }
 
             // Advances
@@ -327,7 +341,16 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
             } else if (!isEmpty(foundryAdv) && isEmpty(kankaAdv)) {
                 toKanka.set(`${kankaName}_advance`, String(foundryAdv));
             } else if (!isEmpty(foundryAdv) && !isEmpty(kankaAdv) && String(foundryAdv) !== kankaAdv) {
-                conflicts.push(`${kankaName}_advance: Foundry=${foundryAdv}, Kanka=${kankaAdv}`);
+                conflicts.push(
+                    fieldConflict(
+                        'characteristic',
+                        `${kankaName}_advance`,
+                        `characteristics.${foundryKey}.advance`,
+                        `${kankaName} advance`,
+                        foundryAdv,
+                        kankaAdv,
+                    ),
+                );
             }
         }
     }
@@ -349,7 +372,7 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
         } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
             toKanka.set(kankaName, String(foundryVal));
         } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
-            conflicts.push(`${kankaName}: Foundry=${foundryVal}, Kanka=${kankaVal}`);
+            conflicts.push(fieldConflict('stat', kankaName, foundryPath, kankaName, foundryVal, kankaVal));
         }
     }
 
@@ -370,7 +393,7 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
             } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
                 toKanka.set(kankaName, String(foundryVal));
             } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
-                conflicts.push(`${kankaName}: Foundry="${foundryVal}", Kanka="${kankaVal}"`);
+                conflicts.push(fieldConflict('bio', kankaName, `bio.${foundryKey}`, foundryKey, foundryVal, kankaVal));
             }
         }
     }
@@ -392,7 +415,7 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
             } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
                 toKanka.set(kankaName, String(foundryVal));
             } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
-                conflicts.push(`${kankaName}: Foundry="${foundryVal}", Kanka="${kankaVal}"`);
+                conflicts.push(fieldConflict('origin', kankaName, `originPath.${foundryKey}`, foundryKey, foundryVal, kankaVal));
             }
         }
     }
@@ -415,13 +438,14 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
         const kankaEmpty = isEmpty(kankaVal) || kankaVal === '{}' || kankaVal === '[]';
 
         if (foundryEmpty && !kankaEmpty) {
-            // Kanka has data, Foundry doesn't — log for manual import
-            // (Creating embedded items from JSON is complex; flag it for the GM)
-            conflicts.push(`${key}: Kanka has data but Foundry is empty — re-import from Kanka to populate`);
+            // Kanka has data, Foundry doesn't — flag for the GM. Creating embedded
+            // items from JSON is complex, so a "keep Kanka" choice means a manual
+            // re-import (handled in applyActorConflict); "keep Foundry" clears Kanka.
+            conflicts.push(fieldConflict('snapshot', key, '', key, foundryVal, kankaVal));
         } else if (!foundryEmpty && kankaEmpty) {
             toKanka.set(key, foundryVal);
         } else if (!foundryEmpty && !kankaEmpty && foundryVal !== kankaVal) {
-            conflicts.push(`${key}: Foundry and Kanka have different data`);
+            conflicts.push(fieldConflict('snapshot', key, '', key, foundryVal, kankaVal));
         }
     }
 
@@ -435,7 +459,7 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
         } else if (!isEmpty(foundryVal) && isEmpty(kankaVal)) {
             toKanka.set(kankaName, String(foundryVal));
         } else if (!isEmpty(foundryVal) && !isEmpty(kankaVal) && String(foundryVal) !== kankaVal) {
-            conflicts.push(`${kankaName}: Foundry="${foundryVal}", Kanka="${kankaVal}"`);
+            conflicts.push(fieldConflict('rootString', kankaName, foundryKey, foundryKey, foundryVal, kankaVal));
         }
     }
 
@@ -621,26 +645,57 @@ async function propagateTokenTextureToScenes(actor: Actor): Promise<void> {
  * Reconcile a single actor with its Kanka entity.
  * Fills empty fields in both directions, warns on conflicts.
  */
-async function reconcileActor(actor: Actor): Promise<void> {
+interface ActorKankaIds {
+    campaignId: KankaApiId;
+    kankaEntityId: KankaApiEntityId;
+    kankaChildId: KankaApiId;
+}
+
+/** Read the Kanka linkage flags off an actor, or undefined when it isn't linked. */
+function getActorKankaIds(actor: Actor): ActorKankaIds | undefined {
     const kankaEntityIdRaw: unknown = getActorFlag(actor, 'kankaEntityId');
-    let kankaEntityId: KankaApiEntityId | undefined;
-    if (kankaEntityIdRaw !== undefined) {
-        assertType<KankaApiEntityId>(kankaEntityIdRaw);
-        kankaEntityId = kankaEntityIdRaw;
-    }
     const kankaChildIdRaw: unknown = getActorFlag(actor, 'kankaChildId');
-    let kankaChildId: KankaApiId | undefined;
-    if (kankaChildIdRaw !== undefined) {
-        assertType<KankaApiId>(kankaChildIdRaw);
-        kankaChildId = kankaChildIdRaw;
-    }
     const campaignIdRaw: unknown = getActorFlag(actor, 'campaign');
-    let campaignId: KankaApiId | undefined;
-    if (campaignIdRaw !== undefined) {
-        assertType<KankaApiId>(campaignIdRaw);
-        campaignId = campaignIdRaw;
+    if (kankaEntityIdRaw === undefined || kankaChildIdRaw === undefined || campaignIdRaw === undefined) return undefined;
+    assertType<KankaApiEntityId>(kankaEntityIdRaw);
+    assertType<KankaApiId>(kankaChildIdRaw);
+    assertType<KankaApiId>(campaignIdRaw);
+    return { campaignId: campaignIdRaw, kankaEntityId: kankaEntityIdRaw, kankaChildId: kankaChildIdRaw };
+}
+
+/** Expand a dot path (`characteristics.weaponSkill.base`) into a nested object
+ *  suitable for a deep-merging `actor.update({ system: … })` call. */
+function expandPath(path: string, value: unknown): Record<string, unknown> {
+    const parts = path.split('.');
+    const root: Record<string, unknown> = {};
+    let cursor = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+        const key = parts[i];
+        if (key === undefined) continue;
+        const next: Record<string, unknown> = {};
+        cursor[key] = next;
+        cursor = next;
     }
-    if (!kankaEntityId || !kankaChildId || !campaignId) return;
+    const last = parts[parts.length - 1];
+    if (last !== undefined) cursor[last] = value;
+    return root;
+}
+
+/** Turn the structured field conflicts for one actor into persistable records. */
+function toStoredActorConflicts(actor: Actor, actorId: string, conflicts: ActorFieldConflict[]): StoredConflict[] {
+    return conflicts.map((conflict) => ({
+        id: conflictId('actor', actorId, conflict.kankaAttr || conflict.foundryPath),
+        entityType: 'actor',
+        entityId: actorId,
+        entityName: actor.name ?? actorId,
+        ...conflict,
+    }));
+}
+
+async function reconcileActor(actor: Actor): Promise<void> {
+    const ids = getActorKankaIds(actor);
+    if (!ids) return;
+    const { campaignId, kankaEntityId, kankaChildId } = ids;
 
     let kankaAttrs: KankaApiAttribute[];
     try {
@@ -652,9 +707,13 @@ async function reconcileActor(actor: Actor): Promise<void> {
 
     const { toKanka, toFoundry, conflicts } = reconcileFields(actor, kankaAttrs);
 
-    // Log conflicts
+    // Record conflicts for GM resolution on next join, and log them for history.
+    const actorId = actor.id ?? '';
+    if (conflicts.length > 0 && actorId) {
+        await addConflicts(toStoredActorConflicts(actor, actorId, conflicts));
+    }
     for (const conflict of conflicts) {
-        console.warn(`[kanka-foundry] CONFLICT on ${actor.name}: ${conflict}`);
+        console.warn(`[kanka-foundry] CONFLICT on ${actor.name}: ${conflict.label}: Foundry=${conflict.foundryValue}, Kanka=${conflict.kankaValue}`);
     }
 
     // Push to Kanka
@@ -716,6 +775,84 @@ export async function reconcileAllActors(): Promise<void> {
         await reconcileActor(actor);
     }
     logInfo('Reconciliation complete.');
+}
+
+/**
+ * Recompute the conflict ids currently present for an actor. The resolver uses
+ * this to discard stored conflicts that have since been fixed out-of-band, so
+ * the popup never shows a row that is no longer divergent.
+ */
+export async function recomputeActorConflictIds(actorId: string): Promise<Set<string>> {
+    const actor = getGameActors()?.get(actorId);
+    if (!actor) return new Set();
+    const ids = getActorKankaIds(actor);
+    if (!ids) return new Set();
+
+    let kankaAttrs: KankaApiAttribute[];
+    try {
+        kankaAttrs = await api.getEntityAttributes(ids.campaignId, ids.kankaEntityId);
+    } catch (error) {
+        logError(`Failed to revalidate conflicts for ${actor.name}`, error);
+        return new Set();
+    }
+
+    const { conflicts } = reconcileFields(actor, kankaAttrs);
+    return new Set(conflicts.map((conflict) => conflictId('actor', actorId, conflict.kankaAttr || conflict.foundryPath)));
+}
+
+/**
+ * Apply a resolved actor conflict to the chosen side. `foundry` pushes the
+ * Foundry value to Kanka; `kanka` writes the Kanka value into Foundry. Snapshot
+ * collections cannot be rebuilt from JSON, so a `kanka` choice there asks the GM
+ * to re-import instead. Returns true when the chosen side was applied (or, for a
+ * snapshot re-import, acknowledged).
+ */
+export async function applyActorConflict(conflict: StoredConflict, choice: ConflictChoice): Promise<boolean> {
+    const actor = getGameActors()?.get(conflict.entityId);
+    if (!actor) return false;
+
+    if (choice === 'foundry') {
+        if (!conflict.kankaAttr) return false;
+        const ids = getActorKankaIds(actor);
+        if (!ids) return false;
+
+        let kankaAttrs: KankaApiAttribute[];
+        try {
+            kankaAttrs = await api.getEntityAttributes(ids.campaignId, ids.kankaEntityId);
+        } catch (error) {
+            logError(`Failed to fetch Kanka attributes for ${actor.name}`, error);
+            return false;
+        }
+
+        const existing = kankaAttrs.find((attr) => attr.name === conflict.kankaAttr);
+        try {
+            if (existing) {
+                await api.updateEntityAttribute(ids.campaignId, ids.kankaEntityId, existing.id, { value: conflict.foundryValue });
+            } else {
+                await api.createEntityAttribute(ids.campaignId, ids.kankaEntityId, { name: conflict.kankaAttr, value: conflict.foundryValue });
+            }
+        } catch (error) {
+            logError(`Failed to push ${conflict.kankaAttr} to Kanka for ${actor.name}`, error);
+            return false;
+        }
+        return true;
+    }
+
+    // choice === 'kanka' → write the Kanka value into Foundry
+    if (conflict.kind === 'snapshot') {
+        showWarning('conflicts.reimportRequired');
+        return true;
+    }
+    if (!conflict.foundryPath) return false;
+
+    const value: unknown = isNumericKind(conflict.kind) ? Number(conflict.kankaValue) : conflict.kankaValue;
+    try {
+        await actor.update({ system: expandPath(conflict.foundryPath, value) });
+    } catch (error) {
+        logError(`Failed to update Foundry actor ${actor.name}`, error);
+        return false;
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

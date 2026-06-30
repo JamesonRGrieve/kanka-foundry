@@ -1,6 +1,15 @@
 import type { KankaApiAttribute, KankaApiCharacter, KankaApiEntityId, KankaApiId } from '../types/kanka';
 import { BIO_MAP, CHARACTERISTIC_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_MAP } from './actorAttributeMaps';
+import { classifyFoundryPath } from './actorConflictMapping';
+import { addConflicts } from './conflicts/conflictStore';
+import { type StoredConflict, conflictId } from './conflicts/types';
 import { syncTokenImage } from './tokenImage';
+
+interface ImportFieldConflict {
+    path: string;
+    foundryValue: string;
+    kankaValue: string;
+}
 
 function getAttributeValue(attributes: KankaApiAttribute[], name: string): number | null {
     const attr = attributes.find((a) => a.name === name);
@@ -196,7 +205,7 @@ function readByPath(root: unknown, path: string): unknown {
  * This stops a sync from silently clobbering a built/advanced PC — or
  * re-stamping origin grants — when Kanka holds stale numbers.
  */
-function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unknown>): { update: Record<string, unknown>; conflicts: string[] } {
+function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unknown>): { update: Record<string, unknown>; conflicts: ImportFieldConflict[] } {
     const systemRaw = actorData['system'];
     const system: Record<string, unknown> = isPlainRecord(systemRaw) ? systemRaw : {};
     // actor.system is loosely typed at the Foundry boundary — narrow via guard
@@ -208,7 +217,7 @@ function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unk
         img: actorData['img'],
         flags: actorData['flags'],
     };
-    const conflicts: string[] = [];
+    const conflicts: ImportFieldConflict[] = [];
 
     for (const [topKey, value] of Object.entries(system)) {
         if (NARRATIVE_SYSTEM_KEYS.has(topKey)) {
@@ -219,13 +228,36 @@ function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unk
         for (const [path, incoming] of Object.entries(leaves)) {
             const current = readByPath(currentSystem, path);
             if (current !== undefined && current !== null && current !== incoming) {
-                conflicts.push(`${path}: actor=${String(current)} != kanka=${String(incoming)}`);
+                conflicts.push({ path, foundryValue: String(current), kankaValue: String(incoming) });
                 continue;
             }
             update[`system.${path}`] = incoming;
         }
     }
     return { update, conflicts };
+}
+
+/** Turn refused import conflicts into resolvable registry records, dropping any
+ *  field that has no Kanka counterpart to write back to. */
+function toStoredImportConflicts(entityName: string, actorId: string, conflicts: ImportFieldConflict[]): StoredConflict[] {
+    const stored: StoredConflict[] = [];
+    for (const conflict of conflicts) {
+        const classification = classifyFoundryPath(conflict.path);
+        if (classification === undefined) continue;
+        stored.push({
+            id: conflictId('actor', actorId, classification.kankaAttr || conflict.path),
+            kind: classification.kind,
+            entityType: 'actor',
+            entityId: actorId,
+            entityName,
+            label: conflict.path,
+            kankaAttr: classification.kankaAttr,
+            foundryPath: conflict.path,
+            kankaValue: conflict.kankaValue,
+            foundryValue: conflict.foundryValue,
+        });
+    }
+    return stored;
 }
 
 /**
@@ -252,10 +284,14 @@ export async function createOrUpdateActor(
     if (existing) {
         const { update, conflicts } = buildConflictAwareUpdate(existing, actorData);
         if (conflicts.length > 0) {
+            const summary = conflicts.map((conflict) => `${conflict.path}: actor=${conflict.foundryValue} != kanka=${conflict.kankaValue}`).join('; ');
             // eslint-disable-next-line no-console -- surfacing a sync stat conflict to the GM console is the intended behavior
-            console.warn(
-                `[kanka-foundry] "${entity.name}": refused ${conflicts.length} conflicting stat write(s) from Kanka (actor value kept): ${conflicts.join('; ')}`,
-            );
+            console.warn(`[kanka-foundry] "${entity.name}": refused ${conflicts.length} conflicting stat write(s) from Kanka (actor value kept): ${summary}`);
+
+            const actorId = existing.id ?? '';
+            if (actorId) {
+                await addConflicts(toStoredImportConflicts(entity.name, actorId, conflicts));
+            }
         }
         await existing.update(update);
         // Foundry copies actor.img into prototypeToken.texture.src by default

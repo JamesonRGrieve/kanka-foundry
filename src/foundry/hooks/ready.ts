@@ -1,10 +1,12 @@
 import api from '../../api';
 import AccessToken from '../../api/AccessToken';
+import ConflictResolverApplication from '../../apps/ConflictResolver/ConflictResolverApplication';
 import type EventTrackerApplication from '../../apps/EventTracker/EventTrackerApplication';
 import executeMigrations from '../../executeMigrations';
 import localization from '../../state/localization';
 import { logError } from '../../util/logger';
 import { reconcileCampaignDescriptionJournal } from '../campaignJournal';
+import { revalidateConflicts } from '../conflicts/resolveConflicts';
 import { showError } from '../notifications';
 import { reconcileAllActors } from '../syncBack';
 
@@ -46,6 +48,13 @@ export default async function setup(): Promise<void> {
             // Reconcile all Kanka-linked actors (bidirectional field sync)
             await reconcileAllActors();
             await reconcileCampaignDescriptionJournal();
+
+            // Surface any genuine two-sided conflicts for GM resolution. Drop
+            // stale entries first so the popup only shows live divergences.
+            const pendingConflicts = await revalidateConflicts();
+            if (pendingConflicts.length > 0) {
+                await new ConflictResolverApplication().render({ force: true });
+            }
         }
     } catch (error) {
         logError(error);

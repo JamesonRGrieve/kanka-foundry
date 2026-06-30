@@ -1,6 +1,8 @@
 import api from '../api';
 import type { KankaApiCampaign, KankaApiId } from '../types/kanka';
 import { logError } from '../util/logger';
+import { addConflicts } from './conflicts/conflictStore';
+import { type ConflictChoice, type StoredConflict, conflictId } from './conflicts/types';
 function assertType<T>(_value: unknown): asserts _value is T {}
 
 const CAMPAIGN_FLAG_SCOPE = 'kanka-foundry';
@@ -136,12 +138,85 @@ export async function reconcileCampaignDescriptionJournal(campaignId?: KankaApiI
 
     if (foundryContent && kankaContent && foundryContent !== kankaContent) {
         console.warn(`[kanka-foundry] CONFLICT on campaign "${campaign.name}": Foundry and Kanka have different descriptions`);
+        await addConflicts([
+            {
+                id: conflictId('campaign', String(numericCampaignId), 'entry'),
+                kind: 'campaignDescription',
+                entityType: 'campaign',
+                entityId: String(numericCampaignId),
+                entityName: campaign.name,
+                label: CAMPAIGN_PAGE_NAME,
+                kankaAttr: '',
+                foundryPath: '',
+                kankaValue: kankaContent,
+                foundryValue: foundryContent,
+            },
+        ]);
         return;
     }
 
     if (entry.name !== campaign.name || Boolean(campaign.image_full) !== Array.from(entry.pages.values()).some((page) => page.type === 'image')) {
         await updateCampaignDescriptionEntry(entry, campaign, foundryContent || kankaContent);
     }
+}
+
+/**
+ * Re-check whether a stored campaign-description conflict still holds. Returns
+ * false once the two sides agree (or the entry/campaign is gone), so the
+ * resolver can drop it.
+ */
+export async function isCampaignConflictValid(conflict: StoredConflict): Promise<boolean> {
+    const campaignId = Number(conflict.entityId);
+    if (!campaignId) return false;
+
+    const entry = findCampaignDescriptionEntry(campaignId);
+    if (!entry) return false;
+
+    let campaign: KankaApiCampaign;
+    try {
+        campaign = await api.getCampaign(campaignId);
+    } catch (error) {
+        logError(`Failed to revalidate campaign ${String(campaignId)}`, error);
+        return false;
+    }
+
+    const foundryContent = getCampaignContent(entry);
+    const kankaContent = campaign.entry ?? '';
+    return Boolean(foundryContent && kankaContent && foundryContent !== kankaContent);
+}
+
+/**
+ * Apply a resolved campaign-description conflict. `foundry` pushes the Foundry
+ * body to Kanka; `kanka` writes the Kanka body into the Foundry entry. Either
+ * way both sides end up holding the chosen content.
+ */
+export async function applyCampaignConflict(conflict: StoredConflict, choice: ConflictChoice): Promise<boolean> {
+    const campaignId = Number(conflict.entityId);
+    if (!campaignId) return false;
+
+    let campaign: KankaApiCampaign;
+    try {
+        campaign = await api.getCampaign(campaignId);
+    } catch (error) {
+        logError(`Failed to fetch campaign ${String(campaignId)}`, error);
+        return false;
+    }
+
+    const entry = findCampaignDescriptionEntry(campaignId);
+    const content = choice === 'foundry' ? conflict.foundryValue : conflict.kankaValue;
+
+    try {
+        if (choice === 'foundry') {
+            await api.updateCampaign(campaignId, { entry: content });
+        }
+        if (entry) {
+            await updateCampaignDescriptionEntry(entry, { ...campaign, entry: content }, content);
+        }
+    } catch (error) {
+        logError(`Failed to apply campaign description resolution for ${campaign.name}`, error);
+        return false;
+    }
+    return true;
 }
 
 function scheduleCampaignReconcile(campaignId: KankaApiId): void {

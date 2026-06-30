@@ -251,6 +251,16 @@ export function registerSettings(): void {
         default: 0,
     });
 
+    // Persisted Kanka ↔ Foundry conflicts awaiting GM resolution, serialized as
+    // JSON. World-scoped so a conflict found at import time survives until the GM
+    // next logs in and the ConflictResolver surfaces it.
+    game.settings?.register('kanka-foundry', 'pendingConflicts', {
+        scope: 'world',
+        config: false,
+        type: String,
+        default: '',
+    });
+
     for (const type of Object.values(EntityType)) {
         if (type === EntityType.campaign) {
             continue;
