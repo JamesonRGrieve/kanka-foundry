@@ -11,6 +11,8 @@ KANKA:
         takeAllKanka: Keep all Kanka values
         takeAllFoundry: Keep all Foundry values
         resolve: Apply choices
+        noneSelected: Select a side (Kanka or Foundry) for at least one row, then apply.
+        applyFailed: "Could not apply {count} conflict(s) — see the console for details."
         empty: (empty)
         reimportNote: Choosing Kanka requires a manual re-import.
         reimportRequired: This collection must be re-imported from Kanka to apply its value.

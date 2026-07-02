@@ -2,6 +2,7 @@ import moduleConfig from '../../../public/module.json';
 import api from '../../api';
 function assertType<T>(_value: unknown): asserts _value is T {}
 import AccessToken from '../../api/AccessToken';
+import ConflictResolverApplication from '../../apps/ConflictResolver/ConflictResolverApplication';
 import EventTrackerApplication from '../../apps/EventTracker/EventTrackerApplication';
 import DefaultPageSheet from '../../apps/KankaJournal/DefaultPageSheet';
 import KankaJournalApplication from '../../apps/KankaJournal/KankaJournalApplication';
@@ -106,7 +107,10 @@ export default function init(): void {
             // Public API surface (macros + e2e): the item bridge, callable as
             // game.modules.get('kanka-foundry').api.bridgeKankaItem(entity, campaignId).
             // syncTokenImage is exposed for macros + the token-frame e2e.
-            Reflect.set(rawMod, 'api', { bridgeKankaItem, syncTokenImage });
+            // ConflictResolverApplication is exposed so a GM macro (or the e2e) can
+            // reopen the conflict dialog on demand:
+            //   new game.modules.get('kanka-foundry').api.ConflictResolverApplication().render(true)
+            Reflect.set(rawMod, 'api', { bridgeKankaItem, syncTokenImage, ConflictResolverApplication });
         }
     } catch (error) {
         logError(error);

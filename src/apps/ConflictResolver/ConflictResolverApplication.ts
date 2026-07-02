@@ -2,6 +2,7 @@ import type { DeepPartial } from 'fvtt-types/utils';
 import { listConflicts } from '../../foundry/conflicts/conflictStore';
 import { resolveConflict } from '../../foundry/conflicts/resolveConflicts';
 import type { ConflictChoice, StoredConflict } from '../../foundry/conflicts/types';
+import { showError, showInfo, showWarning } from '../../foundry/notifications';
 import { logError } from '../../util/logger';
 import resolverTemplate from './templates/resolver.hbs';
 import ApplicationV2 = foundry.applications.api.ApplicationV2;
@@ -107,20 +108,35 @@ export default class ConflictResolverApplication extends HandlebarsApplicationMi
     }
 
     protected async applySelected(): Promise<void> {
-        for (const { id, choice } of this.collectPicks()) {
+        const picks = this.collectPicks();
+        if (picks.length === 0) {
+            showWarning('conflicts.noneSelected');
+            return;
+        }
+
+        let failures = 0;
+        for (const { id, choice } of picks) {
             try {
                 // Sequential by design: each resolution reads-and-writes the shared
                 // conflict setting; concurrent writes would clobber one another.
                 // eslint-disable-next-line no-await-in-loop -- race-free serial persistence of the conflict registry
-                await resolveConflict(id, choice);
+                const applied = await resolveConflict(id, choice);
+                if (!applied) failures += 1;
             } catch (error) {
+                failures += 1;
                 logError(`Failed to resolve conflict ${id}`, error);
             }
         }
 
+        // Surface failures explicitly — a resolution that could not be applied
+        // (e.g. a Kanka write failed) must not look like the button did nothing.
+        if (failures > 0) {
+            showError('conflicts.applyFailed', { count: String(failures) });
+        }
+
         if (listConflicts().length === 0) {
             await this.close();
-            ui.notifications?.info(game.i18n?.localize('KANKA.conflicts.allResolved') ?? 'All conflicts resolved.');
+            showInfo('conflicts.allResolved');
         } else {
             await this.render();
         }

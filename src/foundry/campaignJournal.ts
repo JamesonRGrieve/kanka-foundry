@@ -185,36 +185,60 @@ export async function isCampaignConflictValid(conflict: StoredConflict): Promise
     return Boolean(foundryContent && kankaContent && foundryContent !== kankaContent);
 }
 
+/** Read the campaign snapshot stored on the description entry (present on every
+ *  entry the module creates/updates), so a local resolution can rebuild the
+ *  entry's pages without a fresh Kanka fetch. */
+function getStoredCampaignSnapshot(entry: JournalEntry): KankaApiCampaign | undefined {
+    // eslint-disable-next-line no-restricted-syntax -- boundary: opaque flag value fed into the guard below
+    const raw: unknown = entry.getFlag(CAMPAIGN_FLAG_SCOPE, 'campaignSnapshot');
+    if (raw === null || typeof raw !== 'object' || !('id' in raw) || !('name' in raw)) return undefined;
+    assertType<KankaApiCampaign>(raw);
+    return raw;
+}
+
 /**
  * Apply a resolved campaign-description conflict. `foundry` pushes the Foundry
  * body to Kanka; `kanka` writes the Kanka body into the Foundry entry. Either
  * way both sides end up holding the chosen content.
+ *
+ * The `kanka` (Foundry-side) write must NOT depend on Kanka being reachable, so
+ * the entry's stored campaign snapshot is used to rebuild its pages; only the
+ * `foundry` push actually calls the Kanka API.
  */
 export async function applyCampaignConflict(conflict: StoredConflict, choice: ConflictChoice): Promise<boolean> {
     const campaignId = Number(conflict.entityId);
     if (!campaignId) return false;
 
-    let campaign: KankaApiCampaign;
-    try {
-        campaign = await api.getCampaign(campaignId);
-    } catch (error) {
-        logError(`Failed to fetch campaign ${String(campaignId)}`, error);
-        return false;
-    }
-
     const entry = findCampaignDescriptionEntry(campaignId);
     const content = choice === 'foundry' ? conflict.foundryValue : conflict.kankaValue;
 
-    try {
-        if (choice === 'foundry') {
+    // Only the "keep Foundry" choice mutates Kanka; a failure there is fatal.
+    if (choice === 'foundry') {
+        try {
             await api.updateCampaign(campaignId, { entry: content });
+        } catch (error) {
+            logError(`Failed to push campaign description to Kanka for campaign ${String(campaignId)}`, error);
+            return false;
         }
-        if (entry) {
+    }
+
+    if (entry) {
+        // Prefer a fresh fetch for accurate name/image, but fall back to the
+        // stored snapshot so a local resolution succeeds even if Kanka is down.
+        let campaign = getStoredCampaignSnapshot(entry);
+        try {
+            campaign = await api.getCampaign(campaignId);
+        } catch (error) {
+            logError(`Using stored snapshot; failed to refetch campaign ${String(campaignId)}`, error);
+        }
+        if (!campaign) return false;
+
+        try {
             await updateCampaignDescriptionEntry(entry, { ...campaign, entry: content }, content);
+        } catch (error) {
+            logError(`Failed to update campaign description entry for campaign ${String(campaignId)}`, error);
+            return false;
         }
-    } catch (error) {
-        logError(`Failed to apply campaign description resolution for ${campaign.name}`, error);
-        return false;
     }
     return true;
 }
