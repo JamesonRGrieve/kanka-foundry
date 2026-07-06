@@ -79,6 +79,11 @@ export default class ConflictResolverApplication extends HandlebarsApplicationMi
             async resolveSelected(this: ConflictResolverApplication): Promise<void> {
                 await this.applySelected();
             },
+            // The Apply button becomes a Continue button once the batch has applied
+            // (see #turnIntoContinue); this action fires on that second click.
+            async continueAfterApply(this: ConflictResolverApplication): Promise<void> {
+                await this.proceedAfterApply();
+            },
         },
     };
 
@@ -114,7 +119,13 @@ export default class ConflictResolverApplication extends HandlebarsApplicationMi
             return;
         }
 
+        // Give the GM live feedback while the batch applies: disable the button and
+        // mount a spinner + "done/total" counter beside it, updated per change.
+        const button = this.element.querySelector<HTMLButtonElement>('button[data-action="resolveSelected"]');
+        const progress = this.#beginApplyProgress(button, picks.length);
+
         let failures = 0;
+        let done = 0;
         for (const { id, choice } of picks) {
             try {
                 // Sequential by design: each resolution reads-and-writes the shared
@@ -126,6 +137,8 @@ export default class ConflictResolverApplication extends HandlebarsApplicationMi
                 failures += 1;
                 logError(`Failed to resolve conflict ${id}`, error);
             }
+            done += 1;
+            progress?.update(done);
         }
 
         // Surface failures explicitly — a resolution that could not be applied
@@ -134,6 +147,57 @@ export default class ConflictResolverApplication extends HandlebarsApplicationMi
             showError('conflicts.applyFailed', { count: String(failures) });
         }
 
+        // Batch done: swap the spinner for a checkmark and turn Apply into Continue,
+        // so the GM sees completion and then advances deliberately.
+        progress?.finish();
+        this.#turnIntoContinue(button);
+    }
+
+    /**
+     * Disable the Apply button and mount a spinner + `0/total` progress counter
+     * beside it. Returns `{ update, finish }` to advance the count and swap the
+     * spinner for a checkmark, or null when the button is missing.
+     */
+    #beginApplyProgress(button: HTMLButtonElement | null, total: number): { update: (done: number) => void; finish: () => void } | null {
+        if (button === null) return null;
+        button.disabled = true;
+        const status = document.createElement('span');
+        status.className = 'kanka-apply-status knk:inline-flex knk:items-center knk:gap-1 knk:ml-2';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-spinner fa-spin';
+        const count = document.createElement('span');
+        count.className = 'kanka-apply-count';
+        count.textContent = `0/${total}`;
+        status.append(icon, count);
+        button.after(status);
+        return {
+            update: (applied: number): void => {
+                count.textContent = `${applied}/${total}`;
+            },
+            finish: (): void => {
+                icon.className = 'fas fa-check kanka-apply-done';
+                count.textContent = `${total}/${total}`;
+            },
+        };
+    }
+
+    /**
+     * Turn the (now re-enabled) Apply button into a Continue button whose click
+     * advances past the resolved batch (see {@link proceedAfterApply}).
+     */
+    #turnIntoContinue(button: HTMLButtonElement | null): void {
+        if (button === null) return;
+        button.disabled = false;
+        button.dataset['action'] = 'continueAfterApply';
+        button.textContent = game.i18n?.localize('KANKA.conflicts.continue') ?? 'Continue';
+    }
+
+    /**
+     * Advance after a batch applied: close when every conflict is resolved, else
+     * re-render the remaining ones. Formerly the tail of {@link applySelected}, now
+     * gated behind the Continue click.
+     */
+    protected async proceedAfterApply(): Promise<void> {
         if (listConflicts().length === 0) {
             await this.close();
             showInfo('conflicts.allResolved');

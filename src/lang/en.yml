@@ -11,6 +11,7 @@ KANKA:
         takeAllKanka: Keep all Kanka values
         takeAllFoundry: Keep all Foundry values
         resolve: Apply choices
+        continue: Continue
         noneSelected: Select a side (Kanka or Foundry) for at least one row, then apply.
         applyFailed: "Could not apply {count} conflict(s) — see the console for details."
         empty: (empty)
