@@ -1,4 +1,5 @@
 import type { KankaApiAttribute, KankaApiCharacter, KankaApiEntityId, KankaApiId } from '../types/kanka';
+import { isNonEmptyString, readFunction } from '../util/reflection';
 import { BIO_MAP, CHARACTERISTIC_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_MAP } from './actorAttributeMaps';
 import { classifyFoundryPath } from './actorConflictMapping';
 import { addConflicts } from './conflicts/conflictStore';
@@ -214,9 +215,14 @@ function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unk
 
     const update: Record<string, unknown> = {
         name: actorData['name'],
-        img: actorData['img'],
         flags: actorData['flags'],
     };
+    // Only overwrite the portrait when Kanka actually supplies one. Kanka entities
+    // very often have no custom image (has_custom_image=false -> img is undefined);
+    // writing that through wipes the actor's existing portrait on every sync. Keep
+    // the current image unless Kanka has a real one to replace it with.
+    const incomingImg = actorData['img'];
+    if (isNonEmptyString(incomingImg)) update['img'] = incomingImg;
     const conflicts: ImportFieldConflict[] = [];
 
     for (const [topKey, value] of Object.entries(system)) {
@@ -270,6 +276,107 @@ function findActorByKankaEntityId(entityId: KankaApiEntityId): Actor | undefined
 /**
  * Create or update a Foundry Actor from a Kanka character.
  */
+/**
+ * Approach B — canonical_sheet base actor. When the Kanka entity carries a
+ * `base_actor` attribute (a compendium Actor UUID), clone that base's full stat
+ * block, kit and prototype token onto the synced actor UNDER the Kanka-derived
+ * data, so per-character advancements/overrides win. `fromUuid` loads the base
+ * already flattened to the world's active game line, so a cross-line canonical
+ * (a DW Purestrain carrying a `dh2` variant) arrives with the campaign line's
+ * stats. Mutates `actorData` in place; returns the base's embedded item data to
+ * attach, or null when there is no base.
+ */
+// eslint-disable-next-line no-restricted-syntax -- boundary: actorData is the Kanka→Foundry actor payload handed to Actor.create/Actor#update; Foundry's DataModel validates it on write
+async function applyBaseActor(entity: KankaApiCharacter, actorData: Record<string, unknown>): Promise<object[] | null> {
+    const baseUuid = getStringAttribute(entity.attributes, 'base_actor');
+    if (!baseUuid) return null;
+    // eslint-disable-next-line no-restricted-syntax -- boundary: fromUuid is a Foundry global returning an untyped Document; narrowed via readFunction + isPlainRecord
+    const base: unknown = await fromUuid(baseUuid);
+    const baseObj = readFunction<() => object>(base, 'toObject')?.();
+    if (!isPlainRecord(baseObj)) return null;
+
+    const baseItems = Array.isArray(baseObj['items']) ? (baseObj['items'] as object[]) : [];
+    // Per-instance loadout: append the canonical_sheet.items weapons (a `base_items`
+    // attribute of compendium UUIDs) as lean stubs, skipping any the base already carries.
+    const baseSources = new Set(
+        baseItems
+            .map((i) => (isPlainRecord(i) && isPlainRecord(i['_stats']) ? i['_stats']['compendiumSource'] : undefined))
+            .filter((s): s is string => typeof s === 'string'),
+    );
+    // Resolve the awaited loadout up front so the actorData writes below form one
+    // synchronous region (no await between reading and mutating the shared payload).
+    const instanceItems = (await resolveInstanceItems(entity)).filter((i) => !baseSources.has(i._stats.compendiumSource));
+
+    const baseSystem = isPlainRecord(baseObj['system']) ? baseObj['system'] : {};
+    const kankaSystem = isPlainRecord(actorData['system']) ? actorData['system'] : {};
+    // base UNDER kanka: the base supplies the full stat block; Kanka data wins where set
+    actorData['system'] = foundry.utils.mergeObject(baseSystem, kankaSystem, { inplace: false });
+
+    // portrait: keep the Kanka one if present, else fall back to the base's image
+    if (!isNonEmptyString(actorData['img']) && typeof baseObj['img'] === 'string') {
+        actorData['img'] = baseObj['img'];
+    }
+    // prototype token: base ring/tokenFrame UNDER the Kanka displayName
+    const baseToken = isPlainRecord(baseObj['prototypeToken']) ? baseObj['prototypeToken'] : {};
+    const kankaToken = isPlainRecord(actorData['prototypeToken']) ? actorData['prototypeToken'] : {};
+    actorData['prototypeToken'] = foundry.utils.mergeObject(baseToken, kankaToken, { inplace: false });
+
+    const items = [...baseItems, ...instanceItems];
+    actorData['items'] = items;
+    return items;
+}
+
+/** Replace an actor's embedded items with the base actor's canonical kit. */
+async function replaceEmbeddedKit(actor: Actor, baseItems: object[]): Promise<void> {
+    const ids = actor.items.map((i) => i.id).filter((id): id is string => typeof id === 'string');
+    if (ids.length > 0) await actor.deleteEmbeddedDocuments('Item', ids);
+    // Item.CreateData is any-tainted in fvtt-types, so type-coverage counts the assertion; it is
+    // a genuine framework boundary — the dynamically-cloned item source (type/name/system from
+    // base.toObject().items + resolveInstanceItems stubs) is validated by Foundry on create.
+    // type-coverage:ignore-next-line
+    if (baseItems.length > 0) await actor.createEmbeddedDocuments('Item', baseItems as Item.CreateData[]);
+}
+
+/** A lean embedded-item stub: only name/type/img + the compendium join key. The
+ * in-memory compendium join (compendium-hydrate.ts) fills the full body at load/render. */
+interface LeanItemStub {
+    name: string;
+    type: string;
+    img: string;
+    _stats: { compendiumSource: string };
+}
+
+/**
+ * Resolve a `base_items` attribute (newline/comma-joined compendium Item UUIDs, authored
+ * as `canonical_sheet.items` in the vault) into lean stubs. This is the per-instance
+ * loadout channel: the shared base actor supplies the biology/kit, and each character adds
+ * the specific weapon(s) shown in its art without forking the base.
+ */
+async function resolveInstanceItems(entity: KankaApiCharacter): Promise<LeanItemStub[]> {
+    const raw = getStringAttribute(entity.attributes, 'base_items');
+    if (!raw) return [];
+    const uuids = raw
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    if (uuids.length === 0) return [];
+    const resolved = await Promise.all(
+        uuids.map(async (uuid): Promise<LeanItemStub | null> => {
+            // eslint-disable-next-line no-restricted-syntax -- boundary: fromUuid is a Foundry global returning an untyped Document; narrowed via readFunction + isPlainRecord
+            const item: unknown = await fromUuid(uuid);
+            const obj = readFunction<() => object>(item, 'toObject')?.();
+            if (!isPlainRecord(obj)) return null;
+            return {
+                name: typeof obj['name'] === 'string' ? obj['name'] : '',
+                type: typeof obj['type'] === 'string' ? obj['type'] : '',
+                img: typeof obj['img'] === 'string' ? obj['img'] : '',
+                _stats: { compendiumSource: uuid },
+            };
+        }),
+    );
+    return resolved.filter((s): s is LeanItemStub => s !== null);
+}
+
 export async function createOrUpdateActor(
     entity: KankaApiCharacter,
     entityTags: string[],
@@ -280,8 +387,26 @@ export async function createOrUpdateActor(
 ): Promise<Actor> {
     const existing = findActorByKankaEntityId(entity.entity_id);
     const actorData = createActorData(entity, entityTags, campaignId, defaultActorType, pcTags, gameSystem);
+    const baseItems = await applyBaseActor(entity, actorData);
 
     if (existing) {
+        if (baseItems !== null) {
+            // Base actor is the source of truth (base + advancements). Apply the merged
+            // system directly rather than conflict-refusing it against the 30/30 default.
+            const img = actorData['img'];
+            // eslint-disable-next-line no-restricted-syntax -- boundary: Actor#update payload; values originate from createActorData's Record and are validated by Foundry's DataModel on write
+            const baseUpdate: Record<string, unknown> = {
+                name: actorData['name'],
+                system: actorData['system'],
+                flags: actorData['flags'],
+                prototypeToken: actorData['prototypeToken'],
+            };
+            if (isNonEmptyString(img)) baseUpdate['img'] = img;
+            await existing.update(baseUpdate);
+            await replaceEmbeddedKit(existing, baseItems);
+            await syncTokenImage(existing, campaignId, entity.entity_id, true);
+            return existing;
+        }
         const { update, conflicts } = buildConflictAwareUpdate(existing, actorData);
         if (conflicts.length > 0) {
             const summary = conflicts.map((conflict) => `${conflict.path}: actor=${conflict.foundryValue} != kanka=${conflict.kankaValue}`).join('; ');

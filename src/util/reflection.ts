@@ -43,6 +43,17 @@ export function readString(target: unknown, key: string): string | undefined {
     return typeof value === 'string' ? value : undefined;
 }
 
+/**
+ * True when the value is a non-empty string. The "did the source actually
+ * supply this field" guard: an absent or empty value must never overwrite
+ * existing data — e.g. a Kanka entity with no custom image (`img` undefined
+ * or `''`) must not wipe a Foundry actor's portrait on sync.
+ */
+// eslint-disable-next-line no-restricted-syntax -- boundary: type-guard parameter fed straight into the guard below
+export function isNonEmptyString(value: unknown): value is string {
+    return typeof value === 'string' && value !== '';
+}
+
 /** Read a property and return it only if it is a plain record/object. */
 // eslint-disable-next-line no-restricted-syntax -- boundary: untyped Foundry document property, guarded by isRecord
 export function readRecord(target: unknown, key: string): Record<string, unknown> | undefined {

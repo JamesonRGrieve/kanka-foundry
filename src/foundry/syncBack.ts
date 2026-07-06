@@ -943,7 +943,7 @@ async function dispatchJournalUpdate(dispatch: JournalUpdateDispatch, campaignId
     }
 }
 
-function handleJournalUpdate(entry: JournalEntry, changes: Record<string, unknown>): void {
+function handleJournalUpdate(entry: JournalEntry, _changes: Record<string, unknown>): void {
     if (!api.isReady) return;
     if (game.user?.isGM !== true) return;
     if (game.settings?.get('kanka-foundry', 'syncBackJournals') !== true) return;
@@ -966,9 +966,13 @@ function handleJournalUpdate(entry: JournalEntry, changes: Record<string, unknow
     }
     const dispatch = selectJournalUpdate(type);
 
-    // Build the payload: a name change, plus (for quests) a completion change.
+    // Build the payload. The entity NAME is deliberately NOT written back to
+    // Kanka: Kanka (fed from the vault) is the authoritative source for names and
+    // entities are reconciled by Kanka ID, never by name. Pushing a Foundry
+    // journal's title back would let a stale Foundry name overwrite the correct
+    // Kanka name — the "entity.name drifts from character.name" corruption. Only
+    // non-identity state (quest completion) is allowed to flow Foundry -> Kanka.
     const payload: PlainObject = {};
-    if (changes['name'] !== undefined) payload['name'] = changes['name'];
 
     if (type === 'quest') {
         const completedRaw = getEntryFlag(entry, 'completed');
