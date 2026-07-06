@@ -43,6 +43,7 @@ KANKA:
             actionError: An error occurred while performing the requested action.
             loadEntity: An error occurred while loading the list of entities from Kanka.
             syncAll: An error occurred while trying to sync multiple entities. Some entities could not be synced.
+            skippedEntities: "Kanka: {count} entity/entities could not be loaded (IDs {ids}) and were skipped. The rest synced normally — check the console for details."
         action:
             updateOutdated: Update outdated
             viewGrid: View as grid

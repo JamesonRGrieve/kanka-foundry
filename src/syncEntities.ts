@@ -3,7 +3,9 @@ import type AbstractTypeLoader from './api/typeLoaders/AbstractTypeLoader';
 import { createOrUpdateActor } from './foundry/actorFactory';
 import { bridgeKankaItem } from './foundry/itemBridge';
 import { createJournalEntry, updateJournalEntry } from './foundry/journalEntries';
+import { showWarning } from './foundry/notifications';
 import type { KankaApiCharacter, KankaApiChildEntity, KankaApiEntity, KankaApiId, KankaApiItem, KankaApiModuleType } from './types/kanka';
+import { logError } from './util/logger';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
 
@@ -75,6 +77,11 @@ export async function createEntities(campaignId: KankaApiId, type: KankaApiModul
     const numberOfEntities = entityLookup?.filter((entity) => entity.module.code === type).length ?? 0;
     const expectedNumberRequests = Math.ceil(numberOfEntities / 45);
 
+    // A single entity whose Kanka API read fails (e.g. a corrupt entity_asset
+    // making `?related=1` return HTTP 500) must never abort the whole sync.
+    // Isolate each entity: log and record the failure, keep going, then warn once.
+    const failedIds: number[] = [];
+
     // Check whether fetching all entities of the type would be more efficient than fetching them individually
     if (ids.length > expectedNumberRequests) {
         const loader = loaders.get(type);
@@ -85,13 +92,27 @@ export async function createEntities(campaignId: KankaApiId, type: KankaApiModul
 
         for (const entity of entities) {
             // Make sure to handle them in sequence to avoid duplicate folders being created
-            await handleEntity(loader, entity, campaignId, entityLookup);
+            try {
+                await handleEntity(loader, entity, campaignId, entityLookup);
+            } catch (error) {
+                logError('Kanka: skipped', type, 'entity', entity.id, 'during sync', error);
+                failedIds.push(Number(entity.id));
+            }
         }
     } else {
         for (const id of ids) {
             // Make sure to handle them in sequence to avoid duplicate folders being created
-            await createEntity(campaignId, type, id, entityLookup);
+            try {
+                await createEntity(campaignId, type, id, entityLookup);
+            } catch (error) {
+                logError('Kanka: skipped', type, 'entity', id, 'during sync', error);
+                failedIds.push(Number(id));
+            }
         }
+    }
+
+    if (failedIds.length > 0) {
+        showWarning('browser.error.skippedEntities', { count: String(failedIds.length), ids: failedIds.join(', ') });
     }
 }
 
