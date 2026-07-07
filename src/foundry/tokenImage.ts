@@ -82,12 +82,20 @@ function findPlayerRingDefaults(): TokenPatch | null {
  *  - any other system (legacy): the pre-framed circular Kanka asset (or the
  *    portrait as fallback) goes into both texture slots, as before.
  */
+/** Runtime circular-bust framing pushed from the vault (auto-framed or hand-tuned). */
+export interface TokenFrameValue {
+    cx: number;
+    cy: number;
+    zoom: number;
+}
+
 export function buildTokenPatch(input: {
     systemId: string | undefined;
     actorType: string | undefined;
     portrait: string | undefined | null;
     kankaTokenUrl: string | null;
     hasTokenFrame: boolean;
+    tokenFrame?: TokenFrameValue | null;
     ringDefaults: TokenPatch;
 }): TokenPatch | null {
     const npcNameplate = typeof input.actorType === 'string' && input.actorType.endsWith('-npc') ? { 'prototypeToken.displayName': 0 } : {};
@@ -100,7 +108,14 @@ export function buildTokenPatch(input: {
             'prototypeToken.sight.enabled': true,
             'prototypeToken.ring.enabled': true,
             'prototypeToken.ring.subject.texture': null,
-            ...(input.hasTokenFrame ? {} : { 'prototypeToken.flags.wh40k-rpg.tokenFrame': {} }),
+            // Vault-provided frame wins (it overrides the generic default even when a
+            // prior {} is already present); else keep an existing GM-tuned frame; else
+            // stamp the bare default so the system still masks a circular bust.
+            ...(input.tokenFrame
+                ? { 'prototypeToken.flags.wh40k-rpg.tokenFrame': input.tokenFrame }
+                : input.hasTokenFrame
+                  ? {}
+                  : { 'prototypeToken.flags.wh40k-rpg.tokenFrame': {} }),
             ...npcNameplate,
             ...ringDefaults,
         };
@@ -172,7 +187,13 @@ function hasExistingTokenFrame(proto: ProtoToken | undefined): boolean {
     return systemFlags !== null && typeof systemFlags === 'object' && Reflect.has(systemFlags, 'tokenFrame');
 }
 
-export async function syncTokenImage(actor: Actor, campaignId: KankaApiId, kankaEntityId: KankaApiEntityId, force = false): Promise<void> {
+export async function syncTokenImage(
+    actor: Actor,
+    campaignId: KankaApiId,
+    kankaEntityId: KankaApiEntityId,
+    force = false,
+    tokenFrame: TokenFrameValue | null = null,
+): Promise<void> {
     const actorRaw: unknown = actor;
     const protoRaw: unknown = actorRaw !== null && typeof actorRaw === 'object' ? Reflect.get(actorRaw, 'prototypeToken') : undefined;
     let proto: ProtoToken | undefined;
@@ -201,6 +222,7 @@ export async function syncTokenImage(actor: Actor, campaignId: KankaApiId, kanka
         portrait: actor.img,
         kankaTokenUrl: tokenUrl,
         hasTokenFrame: hasExistingTokenFrame(proto),
+        tokenFrame,
         // Mirror the ring style from an existing player-character actor so the
         // imported NPCs match whatever look the GM has set up for the party.
         ringDefaults: findPlayerRingDefaults() ?? {},

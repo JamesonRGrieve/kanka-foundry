@@ -4,7 +4,7 @@ import { BIO_MAP, CHARACTERISTIC_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_MAP } fr
 import { classifyFoundryPath } from './actorConflictMapping';
 import { addConflicts } from './conflicts/conflictStore';
 import { type StoredConflict, conflictId } from './conflicts/types';
-import { syncTokenImage } from './tokenImage';
+import { syncTokenImage, type TokenFrameValue } from './tokenImage';
 
 interface ImportFieldConflict {
     path: string;
@@ -21,6 +21,21 @@ function getAttributeValue(attributes: KankaApiAttribute[], name: string): numbe
 
 function getStringAttribute(attributes: KankaApiAttribute[], name: string): string {
     return attributes.find((a) => a.name === name)?.value ?? '';
+}
+
+/** Parse the Kanka `token_frame` attribute (JSON `{cx,cy,zoom}`, pushed by the
+ *  vault importer) into a validated frame, or null when absent/malformed. */
+function parseTokenFrame(raw: string): TokenFrameValue | null {
+    if (!raw) return null;
+    try {
+        const parsed: unknown = JSON.parse(raw);
+        if (!isPlainRecord(parsed)) return null;
+        const { cx, cy, zoom } = parsed;
+        if (typeof cx !== 'number' || typeof cy !== 'number' || typeof zoom !== 'number') return null;
+        return { cx, cy, zoom };
+    } catch {
+        return null;
+    }
 }
 
 function buildCharacteristics(attributes: KankaApiAttribute[]): Record<string, { base: number }> {
@@ -319,7 +334,12 @@ async function applyBaseActor(entity: KankaApiCharacter, actorData: Record<strin
     // prototype token: base ring/tokenFrame UNDER the Kanka displayName
     const baseToken = isPlainRecord(baseObj['prototypeToken']) ? baseObj['prototypeToken'] : {};
     const kankaToken = isPlainRecord(actorData['prototypeToken']) ? actorData['prototypeToken'] : {};
-    actorData['prototypeToken'] = foundry.utils.mergeObject(baseToken, kankaToken, { inplace: false });
+    const mergedToken = foundry.utils.mergeObject(baseToken, kankaToken, { inplace: false });
+    // The base's prototypeToken carries the COMPENDIUM name (e.g. "Aberrant (Ranged)").
+    // Tokens dragged out must use THIS character's name, so force the token name to the
+    // Kanka-derived actor name rather than letting the base's name survive the merge.
+    if (isPlainRecord(mergedToken)) mergedToken['name'] = actorData['name'];
+    actorData['prototypeToken'] = mergedToken;
 
     const items = [...baseItems, ...instanceItems];
     actorData['items'] = items;
@@ -387,6 +407,7 @@ export async function createOrUpdateActor(
 ): Promise<Actor> {
     const existing = findActorByKankaEntityId(entity.entity_id);
     const actorData = createActorData(entity, entityTags, campaignId, defaultActorType, pcTags, gameSystem);
+    const tokenFrame = parseTokenFrame(getStringAttribute(entity.attributes, 'token_frame'));
     const baseItems = await applyBaseActor(entity, actorData);
 
     if (existing) {
@@ -404,7 +425,7 @@ export async function createOrUpdateActor(
             if (isNonEmptyString(img)) baseUpdate['img'] = img;
             await existing.update(baseUpdate);
             await replaceEmbeddedKit(existing, baseItems);
-            await syncTokenImage(existing, campaignId, entity.entity_id, true);
+            await syncTokenImage(existing, campaignId, entity.entity_id, true, tokenFrame);
             return existing;
         }
         const { update, conflicts } = buildConflictAwareUpdate(existing, actorData);
@@ -424,12 +445,12 @@ export async function createOrUpdateActor(
         // looks "user-set"). Force it on every import so the canonical Kanka
         // token URL — which serves the circular-masked asset — is always the
         // token texture.
-        await syncTokenImage(existing, campaignId, entity.entity_id, true);
+        await syncTokenImage(existing, campaignId, entity.entity_id, true, tokenFrame);
         return existing;
     }
 
     // biome-ignore lint/complexity/noBannedTypes: Foundry's strict CreateData type doesn't accept dynamic actor data
     const created = (await (Actor.create as Function)(actorData)) as Actor;
-    await syncTokenImage(created, campaignId, entity.entity_id, true);
+    await syncTokenImage(created, campaignId, entity.entity_id, true, tokenFrame);
     return created;
 }

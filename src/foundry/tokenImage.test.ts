@@ -82,3 +82,33 @@ describe('buildTokenPatch (legacy systems)', () => {
         expect(buildTokenPatch({ ...base, kankaTokenUrl: null, portrait: undefined })).toBeNull();
     });
 });
+
+describe('buildTokenPatch — wh40k-rpg tokenFrame', () => {
+    const wh = {
+        systemId: 'wh40k-rpg',
+        actorType: 'dh2-npc',
+        portrait: 'portrait.png',
+        kankaTokenUrl: null,
+        hasTokenFrame: false,
+        ringDefaults: {},
+    };
+    const key = 'prototypeToken.flags.wh40k-rpg.tokenFrame';
+
+    it('stamps the vault-provided frame', () => {
+        const frame = { cx: 0.42, cy: 0.37, zoom: 1.6 };
+        expect(buildTokenPatch({ ...wh, tokenFrame: frame })?.[key]).toEqual(frame);
+    });
+
+    it('overrides an existing {} default when a vault frame is present', () => {
+        const frame = { cx: 0.5, cy: 0.3, zoom: 2 };
+        expect(buildTokenPatch({ ...wh, hasTokenFrame: true, tokenFrame: frame })?.[key]).toEqual(frame);
+    });
+
+    it('stamps the bare default when there is no vault frame and none existing', () => {
+        expect(buildTokenPatch({ ...wh, tokenFrame: null })?.[key]).toEqual({});
+    });
+
+    it('keeps an existing GM-tuned frame when no vault frame is provided', () => {
+        expect(buildTokenPatch({ ...wh, hasTokenFrame: true, tokenFrame: null })).not.toHaveProperty([key]);
+    });
+});
