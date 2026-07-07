@@ -37,6 +37,20 @@
                     data-tooltip="{{kankaLocalize 'browser' 'action' 'openJournal'}}"
                 />
             {{/if}}
+            {{#if this.state.hasMap}}
+                <button
+                    class="knk:flex-none knk:aspect-square icon fas fa-map"
+                    type="button"
+                    data-action="importMapNewScene"
+                    data-tooltip="{{kankaLocalize 'browser' 'action' 'importMapNewScene'}}"
+                />
+                <button
+                    class="knk:flex-none knk:aspect-square icon fas fa-map-location-dot"
+                    type="button"
+                    data-action="importMapAdoptScene"
+                    data-tooltip="{{kankaLocalize 'browser' 'action' 'importMapAdoptScene'}}"
+                />
+            {{/if}}
             <button
                 class="knk:flex-none knk:aspect-square icon fas fa-solid fa-up-right-from-square"
                 type="button"

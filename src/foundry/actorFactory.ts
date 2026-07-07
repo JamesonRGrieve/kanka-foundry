@@ -19,7 +19,7 @@ function getAttributeValue(attributes: KankaApiAttribute[], name: string): numbe
     return Number.isNaN(num) ? null : num;
 }
 
-function getStringAttribute(attributes: KankaApiAttribute[], name: string): string {
+export function getStringAttribute(attributes: KankaApiAttribute[], name: string): string {
     return attributes.find((a) => a.name === name)?.value ?? '';
 }
 

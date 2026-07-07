@@ -6,6 +6,7 @@ import { BIO_MAP, CHARACTERISTIC_REVERSE_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_
 import { addConflicts } from './conflicts/conflictStore';
 import { type ActorFieldConflict, type ConflictChoice, type ConflictKind, type StoredConflict, conflictId, isNumericKind } from './conflicts/types';
 import { showWarning } from './notifications';
+import { registerSceneSyncBackHooks } from './sceneSyncBack';
 import { syncTokenImage } from './tokenImage';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
@@ -467,60 +468,6 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
 }
 
 /**
- * Check if a Foundry actor image path is a real, accessible image.
- * Verifies local paths actually exist by fetching them.
- */
-async function _hasFoundryImage(actor: Actor): Promise<boolean> {
-    const img = actor.img;
-    if (!img || img === 'icons/svg/mystery-man.svg' || img === '') return false;
-
-    // For local paths, verify the file exists
-    if (!img.startsWith('http://') && !img.startsWith('https://')) {
-        try {
-            const resp = await fetch(img, { method: 'HEAD' });
-            return resp.ok;
-        } catch {
-            return false;
-        }
-    }
-    return true;
-}
-
-/**
- * Download an image via authenticated Kanka API and save it locally to Foundry.
- * Returns the local path (e.g., "assets/portraits/dalvor_rech.webp").
- */
-async function _downloadKankaImage(imageUrl: string, actorName: string): Promise<string | null> {
-    try {
-        const response = await fetch(imageUrl, { mode: 'cors', credentials: 'omit' });
-        if (!response.ok) return null;
-        const blob = await response.blob();
-
-        const safeName = actorName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-        const ext = blob.type.includes('png') ? 'png' : blob.type.includes('jpeg') ? 'jpg' : 'webp';
-        const fileName = `${safeName}.${ext}`;
-
-        const file = new File([blob], fileName, { type: blob.type });
-        const formData = new FormData();
-        formData.append('source', 'data');
-        formData.append('target', 'assets/portraits');
-        formData.append('upload', file);
-
-        const uploadResp = await fetch('/upload', { method: 'POST', body: formData });
-        if (!uploadResp.ok) {
-            logError(`Failed to save image locally: ${uploadResp.statusText}`);
-            return null;
-        }
-        const resultRaw: unknown = await uploadResp.json();
-        const path: unknown = resultRaw !== null && typeof resultRaw === 'object' ? Reflect.get(resultRaw, 'path') : undefined;
-        return typeof path === 'string' ? path : `assets/portraits/${fileName}`;
-    } catch (error) {
-        logError(`Failed to download Kanka image for ${actorName}`, error);
-        return null;
-    }
-}
-
-/**
  * Check if a Foundry image path is a local path (not an external URL).
  */
 function isLocalImage(img: string): boolean {
@@ -528,9 +475,12 @@ function isLocalImage(img: string): boolean {
 }
 
 /**
- * Reconcile the image between Foundry and Kanka.
- * Same logic as field reconciliation: fill empty from the other, warn on conflict.
- * Images pulled from Kanka are saved locally to assets/portraits/ to avoid CORS.
+ * Reconcile the image between Foundry and Kanka. Kanka is the single image host:
+ * a Kanka portrait is HOTLINKED onto actor.img (its image_full URL) — never
+ * downloaded into the Foundry data dir. If only Foundry holds a local image, it
+ * is pushed up to Kanka so Kanka becomes the source. The canonical Foundry origin
+ * (vtt.jamesonrgrieve.ca) is in Kanka's CORS allow-list, so the hotlinked URL
+ * loads cleanly as a canvas texture (token bust + scene background alike).
  */
 async function reconcileImage(actor: Actor, campaignId: KankaApiId, kankaEntityId: KankaApiEntityId, _kankaChildId: KankaApiId): Promise<void> {
     // Fetch entity data to get the current Kanka portrait
@@ -1092,4 +1042,7 @@ export function registerSyncBackHooks(): void {
     Hooks.on('updateJournalEntry', (entry: JournalEntry, changes: Record<string, unknown>) => {
         handleJournalUpdate(entry, changes);
     });
+
+    // Bidirectional map sync: Foundry Scene/Note edits → Kanka map markers.
+    registerSceneSyncBackHooks();
 }

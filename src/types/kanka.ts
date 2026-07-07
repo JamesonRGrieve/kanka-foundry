@@ -357,6 +357,27 @@ export interface KankaApiLocation extends KankaApiChildEntityWithChildren {
     is_destroyed: boolean;
 }
 
+export interface KankaApiMap extends KankaApiChildEntity {
+    location_id: KankaApiId | null;
+    is_real: boolean;
+    /** Image-map pixel dimensions (present for image maps; used as the Foundry Scene canvas size). */
+    width?: number;
+    height?: number;
+}
+
+export interface KankaApiMapMarker {
+    id: KankaApiId;
+    map_id: KankaApiId;
+    entity_id: KankaApiEntityId | null;
+    name: string | null;
+    latitude: number;
+    longitude: number;
+    colour: string | null;
+    shape_id: number;
+    icon: string | null;
+    is_draggable: boolean;
+}
+
 export interface KankaApiNote extends KankaApiChildEntityWithChildren {
     /** @deprecated Will be removed; use parents[] instead */
     note_id?: KankaApiId | null;

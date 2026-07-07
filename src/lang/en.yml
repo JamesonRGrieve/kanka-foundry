@@ -56,6 +56,15 @@ KANKA:
             linkSingle: Link
             delete: Delete
             deleteAll: Delete all
+            importMapNewScene: Import map to new scene
+            importMapAdoptScene: Import map into existing scene
+        map:
+            newSceneSuccess: 'Imported Kanka map "{name}" to a new scene.'
+            adoptSuccess: 'Imported Kanka map "{name}" into scene "{scene}".'
+            noScenes: There are no existing scenes to adopt. Create a scene first.
+            dialogTitle: Import Kanka map into existing scene
+            dialogLabel: Choose the scene to bind this Kanka map to.
+            dialogConfirm: Adopt scene
         tabs:
             import: Import entities
             delete: View deleted entities

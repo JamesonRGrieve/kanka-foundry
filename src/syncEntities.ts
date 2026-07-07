@@ -4,6 +4,7 @@ import { createOrUpdateActor } from './foundry/actorFactory';
 import { bridgeKankaItem } from './foundry/itemBridge';
 import { createJournalEntry, updateJournalEntry } from './foundry/journalEntries';
 import { showWarning } from './foundry/notifications';
+import { importVehicle, isVehicleEntity } from './foundry/vehicleImport';
 import type { KankaApiCharacter, KankaApiChildEntity, KankaApiEntity, KankaApiId, KankaApiItem, KankaApiModuleType } from './types/kanka';
 import { logError } from './util/logger';
 
@@ -17,23 +18,21 @@ async function handleEntity(loader: AbstractTypeLoader, entity: KankaApiChildEnt
     if (loader.getType() === 'character') {
         const createActors = game.settings?.get('kanka-foundry', 'createActorsForCharacters') ?? true;
         if (createActors) {
-            const defaultTypeRaw: unknown = game.settings?.get('kanka-foundry', 'defaultActorType');
-            const defaultType = typeof defaultTypeRaw === 'string' ? defaultTypeRaw : 'npc';
-            const gameSystemRaw: unknown = game.settings?.get('kanka-foundry', 'defaultGameSystem');
-            const gameSystem = typeof gameSystemRaw === 'string' ? gameSystemRaw : 'dh2';
-            const pcTagsRaw: unknown = game.settings?.get('kanka-foundry', 'pcTags');
-            const pcTagsSetting = typeof pcTagsRaw === 'string' ? pcTagsRaw : 'pc,acolyte';
-            const pcTags = pcTagsSetting
-                .split(',')
-                .map((t: string) => t.trim())
-                .filter(Boolean);
-
-            // Resolve tag IDs to names from entity lookup
+            const { defaultType, gameSystem, pcTags } = resolveActorImportSettings();
             const entityTags = resolveEntityTags(entity, entityLookup);
-
             assertType<KankaApiCharacter>(entity);
             await createOrUpdateActor(entity, entityTags, campaignId, defaultType, pcTags, gameSystem);
         }
+    }
+
+    // A vehicle is a Kanka Location carrying a `base_actor` attribute: emit its
+    // Actor AND — when it has an interior image map — a linked walkable-interior
+    // Scene. No-op for a non-vehicle Location. GM-triggered (this path runs only
+    // on explicit import).
+    if (loader.getType() === 'location' && isVehicleEntity(entity)) {
+        const { defaultType, gameSystem, pcTags } = resolveActorImportSettings();
+        const entityTags = resolveEntityTags(entity, entityLookup);
+        await importVehicle(entity, entityTags, campaignId, defaultType, pcTags, gameSystem);
     }
 
     // Bridge bridgeable Kanka items to world Items cloned from a compendium.
@@ -42,6 +41,22 @@ async function handleEntity(loader: AbstractTypeLoader, entity: KankaApiChildEnt
         assertType<KankaApiItem>(entity);
         await bridgeKankaItem(entity, campaignId);
     }
+}
+
+/** Resolve the Foundry-actor import settings (default type, game system, PC tags) once. */
+function resolveActorImportSettings(): { defaultType: string; gameSystem: string; pcTags: string[] } {
+    const defaultTypeRaw: unknown = game.settings?.get('kanka-foundry', 'defaultActorType');
+    const gameSystemRaw: unknown = game.settings?.get('kanka-foundry', 'defaultGameSystem');
+    const pcTagsRaw: unknown = game.settings?.get('kanka-foundry', 'pcTags');
+    const pcTagsSetting = typeof pcTagsRaw === 'string' ? pcTagsRaw : 'pc,acolyte';
+    return {
+        defaultType: typeof defaultTypeRaw === 'string' ? defaultTypeRaw : 'npc',
+        gameSystem: typeof gameSystemRaw === 'string' ? gameSystemRaw : 'dh2',
+        pcTags: pcTagsSetting
+            .split(',')
+            .map((t: string) => t.trim())
+            .filter(Boolean),
+    };
 }
 
 function resolveEntityTags(entity: KankaApiChildEntity, entityLookup?: KankaApiEntity[]): string[] {
@@ -134,21 +149,19 @@ export async function updateEntity(entry: JournalEntry, entityLookup?: KankaApiE
     if (type === 'character') {
         const createActors = game.settings?.get('kanka-foundry', 'createActorsForCharacters') ?? true;
         if (createActors) {
-            const defaultTypeRaw2: unknown = game.settings?.get('kanka-foundry', 'defaultActorType');
-            const defaultType2 = typeof defaultTypeRaw2 === 'string' ? defaultTypeRaw2 : 'npc';
-            const gameSystemRaw2: unknown = game.settings?.get('kanka-foundry', 'defaultGameSystem');
-            const gameSystem2 = typeof gameSystemRaw2 === 'string' ? gameSystemRaw2 : 'dh2';
-            const pcTagsRaw2: unknown = game.settings?.get('kanka-foundry', 'pcTags');
-            const pcTagsSetting2 = typeof pcTagsRaw2 === 'string' ? pcTagsRaw2 : 'pc,acolyte';
-            const pcTags2 = pcTagsSetting2
-                .split(',')
-                .map((t: string) => t.trim())
-                .filter(Boolean);
+            const { defaultType, gameSystem, pcTags } = resolveActorImportSettings();
             const entityTags = resolveEntityTags(entity, entityLookup);
-
             assertType<KankaApiCharacter>(entity);
-            await createOrUpdateActor(entity, entityTags, campaignId, defaultType2, pcTags2, gameSystem2);
+            await createOrUpdateActor(entity, entityTags, campaignId, defaultType, pcTags, gameSystem);
         }
+    }
+
+    // Re-run the vehicle emit on update (idempotent: the Actor + interior Scene
+    // are updated in place, never duplicated). No-op for a non-vehicle Location.
+    if (type === 'location' && isVehicleEntity(entity)) {
+        const { defaultType, gameSystem, pcTags } = resolveActorImportSettings();
+        const entityTags = resolveEntityTags(entity, entityLookup);
+        await importVehicle(entity, entityTags, campaignId, defaultType, pcTags, gameSystem);
     }
 
     if (type === 'item') {

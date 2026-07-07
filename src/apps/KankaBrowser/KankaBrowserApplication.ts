@@ -5,13 +5,15 @@ import loaders from '../../api/typeLoaders';
 function assertType<T>(_value: unknown): asserts _value is T {}
 
 import { findEntryByEntityId, hasOutdatedEntryByEntity } from '../../foundry/journalEntries';
-import { showError } from '../../foundry/notifications';
+import { showError, showInfo, showWarning } from '../../foundry/notifications';
 import type { KankaSettings } from '../../foundry/settings';
+import localization from '../../state/localization';
 import { createEntities, createEntity, updateEntity } from '../../syncEntities';
 import EntityType from '../../types/EntityType';
-import type { KankaApiCampaign, KankaApiEntity, KankaApiModuleType } from '../../types/kanka';
+import type { KankaApiCampaign, KankaApiEntity, KankaApiMap, KankaApiModuleType } from '../../types/kanka';
 import groupBy from '../../util/groupBy';
 import { logError } from '../../util/logger';
+import { entityHasMap, findMapForChild, importMapAdoptScene, importMapToNewScene } from './mapImport';
 import {
     HIERARCHY_PARENT_FIELDS,
     type HierarchyMeta,
@@ -120,6 +122,8 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
     #hierarchyMeta: Map<EntityType, HierarchyMeta> = new Map();
     #allCampaigns: KankaApiCampaign[] | null = null;
     #campaign: KankaApiCampaign | null = null;
+    /** Every Kanka map in the campaign, used to flag which entities can be imported as Scenes. */
+    #maps: KankaApiMap[] = [];
     readonly #hooks: Partial<Record<Hooks.HookName, number>> = {};
     #isLoading = false;
 
@@ -161,6 +165,8 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
             updateSingle: KankaBrowserApplication.updateSingle,
             linkAll: KankaBrowserApplication.linkAll,
             updateOutdated: KankaBrowserApplication.updateOutdated,
+            importMapNewScene: KankaBrowserApplication.importMapNewScene,
+            importMapAdoptScene: KankaBrowserApplication.importMapAdoptScene,
         },
     };
 
@@ -344,6 +350,97 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         }
     }
 
+    /** Resolve the Kanka map attached to the entity that owns the clicked action button. */
+    #mapForTarget(target: HTMLElement): KankaApiMap | undefined {
+        const rawId = target.closest<HTMLElement>('[data-entity-id]')?.dataset['entityId'];
+        const id = rawId ? Number.parseInt(rawId, 10) : null;
+        if (id === null) return undefined;
+        const entity = this.#entities?.find((e) => idToNumber(e.id) === id);
+        if (!entity) return undefined;
+        return findMapForChild(this.#maps, entity.child_id);
+    }
+
+    static async importMapNewScene(this: KankaBrowserApplication, _event: PointerEvent, target: HTMLElement) {
+        try {
+            if (!this.#campaign) return;
+
+            const map = this.#mapForTarget(target);
+            if (!map) return;
+
+            const btn: unknown = target;
+            assertType<HTMLButtonElement>(btn);
+            this.setLoadingState(btn);
+
+            const scene = await importMapToNewScene(this.#campaign.id, map);
+            if (scene) showInfo('browser', 'map', 'newSceneSuccess', { name: map.name });
+        } catch (error) {
+            logError(error);
+            showError('browser.error.actionError');
+        } finally {
+            this.render();
+        }
+    }
+
+    static async importMapAdoptScene(this: KankaBrowserApplication, _event: PointerEvent, target: HTMLElement) {
+        try {
+            if (!this.#campaign) return;
+
+            const map = this.#mapForTarget(target);
+            if (!map) return;
+
+            const scene = await this.#promptForScene();
+            if (!scene) return;
+
+            const btn: unknown = target;
+            assertType<HTMLButtonElement>(btn);
+            this.setLoadingState(btn);
+
+            await importMapAdoptScene(this.#campaign.id, map, scene);
+            showInfo('browser', 'map', 'adoptSuccess', { name: map.name, scene: scene.name ?? '' });
+        } catch (error) {
+            logError(error);
+            showError('browser.error.actionError');
+        } finally {
+            this.render();
+        }
+    }
+
+    /** Prompt the GM to pick one of the world's existing Scenes to adopt for this map. */
+    async #promptForScene(): Promise<Scene | undefined> {
+        const scenes = [...(game.scenes ?? [])].filter((scene) => typeof scene.id === 'string' && scene.id !== '');
+        if (scenes.length === 0) {
+            showWarning('browser.map.noScenes');
+            return undefined;
+        }
+
+        const options = scenes
+            .map((scene) => {
+                const id = String(scene.id);
+                return `<option value="${id}">${foundry.utils.escapeHTML(scene.name ?? id)}</option>`;
+            })
+            .join('');
+        const content = `<div class="knk:flex knk:flex-col knk:gap-2">
+            <p>${localization.localize('KANKA.browser.map.dialogLabel')}</p>
+            <select name="sceneId" class="knk:w-full">${options}</select>
+        </div>`;
+
+        const result: unknown = await foundry.applications.api.DialogV2.prompt({
+            window: { title: localization.localize('KANKA.browser.map.dialogTitle') },
+            content,
+            ok: {
+                label: localization.localize('KANKA.browser.map.dialogConfirm'),
+                callback: (_event: Event, button: HTMLButtonElement) => {
+                    const select = button.form?.elements.namedItem('sceneId');
+                    return select instanceof HTMLSelectElement ? select.value : null;
+                },
+            },
+            rejectClose: false,
+        });
+
+        if (typeof result !== 'string') return undefined;
+        return game.scenes?.get(result) ?? undefined;
+    }
+
     protected getEntities(type?: EntityType) {
         if (!this.#entities) return [];
 
@@ -357,6 +454,7 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
                         isOutdated,
                         isPrivate: entity.is_private && !isOutdated,
                         isLinked: Boolean(findEntryByEntityId(entity.id)),
+                        hasMap: entityHasMap(this.#maps, entity),
                     },
                 };
             });
@@ -462,14 +560,28 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         return Object.values(EntityType).filter((type) => isHierarchicalType(type) && (counts.get(type) ?? 0) >= 2);
     }
 
-    protected async loadDataForCampaign(campaignId?: number) {
-        if (!campaignId) return { campaign: null, entities: null, hierarchyMeta: new Map<EntityType, HierarchyMeta>() };
+    /** Load every map in the campaign; failure degrades to "no maps" rather than failing the browser. */
+    protected async loadMaps(campaignId: number): Promise<KankaApiMap[]> {
+        try {
+            return await api.getAllMaps(campaignId);
+        } catch (error) {
+            logError('Failed to load Kanka maps; map import disabled for this load', error);
+            return [];
+        }
+    }
 
-        const [campaign, entities] = await Promise.all([api.getCampaign(campaignId), this.loadEntities(campaignId)]);
+    protected async loadDataForCampaign(campaignId?: number) {
+        if (!campaignId) return { campaign: null, entities: null, hierarchyMeta: new Map<EntityType, HierarchyMeta>(), maps: [] };
+
+        const [campaign, entities, maps] = await Promise.all([
+            api.getCampaign(campaignId),
+            this.loadEntities(campaignId),
+            this.loadMaps(campaignId),
+        ]);
 
         const hierarchyMeta = await this.loadHierarchyMeta(campaignId, KankaBrowserApplication.#hierarchicalTypesToLoad(entities ?? []));
 
-        return { campaign, entities, hierarchyMeta };
+        return { campaign, entities, hierarchyMeta, maps };
     }
 
     protected setupData(this: KankaBrowserApplication): void {
@@ -482,14 +594,16 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         this.#campaign = null;
         this.#entities = null;
         this.#hierarchyMeta = new Map();
+        this.#maps = [];
         this.#isLoading = true;
 
         Promise.all([api.getAllCampaigns(), this.loadDataForCampaign(campaignId)])
-            .then(([allCampaigns, { campaign, entities, hierarchyMeta }]) => {
+            .then(([allCampaigns, { campaign, entities, hierarchyMeta, maps }]) => {
                 this.#allCampaigns = allCampaigns;
                 this.#campaign = campaign;
                 this.#entities = entities;
                 this.#hierarchyMeta = hierarchyMeta;
+                this.#maps = maps;
                 this.#isLoading = false;
                 this.render({ force: true });
             })

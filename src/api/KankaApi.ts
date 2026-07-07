@@ -13,6 +13,8 @@ import type {
     KankaApiJournal,
     KankaApiListResult,
     KankaApiLocation,
+    KankaApiMap,
+    KankaApiMapMarker,
     KankaApiNote,
     KankaApiOrganisation,
     KankaApiQuest,
@@ -148,6 +150,20 @@ export default class KankaApi {
 
     public async getAllLocations(campaignId: KankaApiId): Promise<KankaApiLocation[]> {
         return this.fetchFullList(`campaigns/${Number(campaignId)}/locations?related=1`);
+    }
+
+    public async getAllMaps(campaignId: KankaApiId): Promise<KankaApiMap[]> {
+        return this.fetchFullList<KankaApiMap>(`campaigns/${Number(campaignId)}/maps?related=1`);
+    }
+
+    public async getMap(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiMap> {
+        type Result = KankaApiResult<KankaApiMap>;
+        const result = await this.#fetcher.fetch<Result>(`campaigns/${String(campaignId)}/maps/${String(id)}?related=1`);
+        return result.data;
+    }
+
+    public async getMapMarkers(campaignId: KankaApiId, mapId: KankaApiId): Promise<KankaApiMapMarker[]> {
+        return this.fetchFullList<KankaApiMapMarker>(`campaigns/${String(campaignId)}/maps/${String(mapId)}/map_markers`);
     }
 
     public async getNote(campaignId: KankaApiId, id: KankaApiId): Promise<KankaApiNote> {

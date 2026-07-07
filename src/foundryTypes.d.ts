@@ -15,6 +15,8 @@ type ActorFlagData = {
     campaign: KankaApiId;
     snapshot: KankaApiChildEntity;
     version: string;
+    /** Interior Scene linked to a vehicle Actor (read by the wh40k-rpg system to "Board Interior"). */
+    interiorSceneId?: string;
 };
 
 type CampaignJournalFlagData = {
@@ -26,6 +28,13 @@ type CampaignJournalFlagData = {
         entry: string;
         image_full?: string;
     };
+};
+
+type SceneFlagData = {
+    kankaMapId: KankaApiId;
+    kankaEntityId: KankaApiEntityId;
+    /** Vehicle Actor this interior Scene belongs to (reverse of ActorFlagData.interiorSceneId). */
+    vehicleActorId?: string;
 };
 
 declare module 'fvtt-types/configuration' {
@@ -41,6 +50,10 @@ declare module 'fvtt-types/configuration' {
         Actor: {
             'core': Document.CoreFlags;
             'kanka-foundry': ActorFlagData;
+        };
+        Scene: {
+            'core': Document.CoreFlags;
+            'kanka-foundry': SceneFlagData;
         };
     }
 
