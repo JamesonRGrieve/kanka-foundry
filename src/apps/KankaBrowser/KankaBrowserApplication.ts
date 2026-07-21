@@ -13,6 +13,7 @@ import EntityType from '../../types/EntityType';
 import type { KankaApiCampaign, KankaApiEntity, KankaApiMap, KankaApiModuleType } from '../../types/kanka';
 import groupBy from '../../util/groupBy';
 import { logError } from '../../util/logger';
+import { type CharacterGroup, buildCharacterGroups, sortByGroup } from './characterGroups';
 import { entityHasMap, findMapForChild, importMapAdoptScene, importMapToNewScene } from './mapImport';
 import {
     HIERARCHY_PARENT_FIELDS,
@@ -97,6 +98,22 @@ const ENTITY_TO_MODULE: Readonly<Record<EntityType, KankaApiModuleType | null>> 
     [EntityType.race]: 'race',
 };
 
+/**
+ * A `childId → name` map over the campaign's entities of one module type. Used to
+ * resolve a character's family / organisation membership ids (which live in the
+ * type's own child-id space) to display names for the grouped import list,
+ * without an extra API round-trip.
+ */
+function entityNameMap(entities: readonly KankaApiEntity[], code: KankaApiModuleType): Map<number, string> {
+    const map = new Map<number, string>();
+    for (const entity of entities) {
+        if (entity.module.code !== code) continue;
+        const id = idToNumber(entity.child_id);
+        if (id !== null) map.set(id, entity.name);
+    }
+    return map;
+}
+
 type RenderContext = ApplicationV2.RenderContext &
     Partial<{
         isLoading: boolean;
@@ -120,6 +137,9 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
     /** One `childId → { parentId, name }` map per hierarchical type present in the
      *  campaign, used to indent the import picker by ancestry. */
     #hierarchyMeta: Map<EntityType, HierarchyMeta> = new Map();
+    /** `childId → group` for characters (their family, else organisation), used to
+     *  nest the otherwise-flat character import list — Kanka has no character tree. */
+    #characterGroups: Map<number, CharacterGroup> = new Map();
     #allCampaigns: KankaApiCampaign[] | null = null;
     #campaign: KankaApiCampaign | null = null;
     /** Every Kanka map in the campaign, used to flag which entities can be imported as Scenes. */
@@ -459,6 +479,13 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
                 };
             });
 
+        // Characters have no native ancestry tree in Kanka, so they are grouped
+        // cross-type instead: under their family (or, failing that, organisation).
+        // Rows carry a `groupHeader` marker the list view renders above each group.
+        if (type === EntityType.character && this.#characterGroups.size > 0) {
+            return sortByGroup(mapped, (entity) => this.#characterGroups.get(idToNumber(entity.child_id) ?? -1));
+        }
+
         // Indent every type that has a native Kanka tree (location, organisation,
         // family, item, journal, note, quest, race, event, creature, ability) by
         // its ancestry. Types without a tree — notably characters — fall through
@@ -571,17 +598,43 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
     }
 
     protected async loadDataForCampaign(campaignId?: number) {
-        if (!campaignId) return { campaign: null, entities: null, hierarchyMeta: new Map<EntityType, HierarchyMeta>(), maps: [] };
+        if (!campaignId) {
+            return {
+                campaign: null,
+                entities: null,
+                hierarchyMeta: new Map<EntityType, HierarchyMeta>(),
+                characterGroups: new Map<number, CharacterGroup>(),
+                maps: [],
+            };
+        }
 
-        const [campaign, entities, maps] = await Promise.all([
-            api.getCampaign(campaignId),
-            this.loadEntities(campaignId),
-            this.loadMaps(campaignId),
+        const [campaign, entities, maps] = await Promise.all([api.getCampaign(campaignId), this.loadEntities(campaignId), this.loadMaps(campaignId)]);
+        const loadedEntities = entities ?? [];
+
+        const [hierarchyMeta, characterGroups] = await Promise.all([
+            this.loadHierarchyMeta(campaignId, KankaBrowserApplication.#hierarchicalTypesToLoad(loadedEntities)),
+            this.loadCharacterGroups(campaignId, loadedEntities),
         ]);
 
-        const hierarchyMeta = await this.loadHierarchyMeta(campaignId, KankaBrowserApplication.#hierarchicalTypesToLoad(entities ?? []));
+        return { campaign, entities, hierarchyMeta, characterGroups, maps };
+    }
 
-        return { campaign, entities, hierarchyMeta, maps };
+    /**
+     * Build the `childId → group` map that nests the character import list: each
+     * character's family (preferred) or organisation, resolved to a display name
+     * from the already-loaded entity list. One extra list request, made only when
+     * the campaign actually has characters; any failure degrades to a flat list.
+     */
+    protected async loadCharacterGroups(campaignId: number, entities: readonly KankaApiEntity[]): Promise<Map<number, CharacterGroup>> {
+        if (!entities.some((entity) => entity.module.code === 'character')) return new Map();
+
+        try {
+            const characters = await api.getAllCharacters(campaignId);
+            return buildCharacterGroups(characters, entityNameMap(entities, 'family'), entityNameMap(entities, 'organisation'));
+        } catch (error) {
+            logError('Failed to load character groups; character list falls back to flat', error);
+            return new Map();
+        }
     }
 
     protected setupData(this: KankaBrowserApplication): void {
@@ -594,15 +647,17 @@ export default class KankaBrowserApplication extends HandlebarsApplicationMixin(
         this.#campaign = null;
         this.#entities = null;
         this.#hierarchyMeta = new Map();
+        this.#characterGroups = new Map();
         this.#maps = [];
         this.#isLoading = true;
 
         Promise.all([api.getAllCampaigns(), this.loadDataForCampaign(campaignId)])
-            .then(([allCampaigns, { campaign, entities, hierarchyMeta, maps }]) => {
+            .then(([allCampaigns, { campaign, entities, hierarchyMeta, characterGroups, maps }]) => {
                 this.#allCampaigns = allCampaigns;
                 this.#campaign = campaign;
                 this.#entities = entities;
                 this.#hierarchyMeta = hierarchyMeta;
+                this.#characterGroups = characterGroups;
                 this.#maps = maps;
                 this.#isLoading = false;
                 this.render({ force: true });
