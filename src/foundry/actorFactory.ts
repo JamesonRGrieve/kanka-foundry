@@ -307,7 +307,9 @@ async function applyBaseActor(entity: KankaApiCharacter, actorData: Record<strin
     if (!baseUuid) return null;
     // eslint-disable-next-line no-restricted-syntax -- boundary: fromUuid is a Foundry global returning an untyped Document; narrowed via readFunction + isPlainRecord
     const base: unknown = await fromUuid(baseUuid);
-    const baseObj = readFunction<() => object>(base, 'toObject')?.();
+    // `.call(base)` binds `this`: Foundry's Document#toObject dereferences `this._source`,
+    // so invoking the reflected method detached throws "cannot read properties of undefined".
+    const baseObj = readFunction<() => object>(base, 'toObject')?.call(base);
     if (!isPlainRecord(baseObj)) return null;
 
     const baseItems = Array.isArray(baseObj['items']) ? (baseObj['items'] as object[]) : [];
@@ -384,7 +386,8 @@ async function resolveInstanceItems(entity: KankaApiCharacter): Promise<LeanItem
         uuids.map(async (uuid): Promise<LeanItemStub | null> => {
             // eslint-disable-next-line no-restricted-syntax -- boundary: fromUuid is a Foundry global returning an untyped Document; narrowed via readFunction + isPlainRecord
             const item: unknown = await fromUuid(uuid);
-            const obj = readFunction<() => object>(item, 'toObject')?.();
+            // `.call(item)` binds `this` — Document#toObject reads `this._source` (see applyBaseActor).
+            const obj = readFunction<() => object>(item, 'toObject')?.call(item);
             if (!isPlainRecord(obj)) return null;
             return {
                 name: typeof obj['name'] === 'string' ? obj['name'] : '',
