@@ -21,16 +21,28 @@ export const CHARACTERISTIC_REVERSE_MAP: Record<string, string> = Object.fromEnt
 
 /**
  * Maps Kanka attribute names to Foundry Actor system paths for non-characteristic stats.
+ *
+ * **Allow-list — durable character facts ONLY.** Foundry is the sole authority for
+ * live, mutable mechanical state; Kanka is the narrative wiki and must never be a
+ * mirror (or, via the bidirectional reconcile in `syncBack.ts`, a *source*) for it.
+ *
+ * Every entry here is read by all four consumers — actor creation, sync-back,
+ * conflict detection, and the sheet button — so an entry added here is synced
+ * everywhere. Before adding one, ask: *does this value change during play?* If yes,
+ * it does not belong in this map.
+ *
+ * Deliberately EXCLUDED as live state (#474):
+ *   - `fate.value`        — per-session Fate spend
+ *   - `wounds.value`      — current damage
+ *   - `insanity` / `corruption` — trackers accrued in play
+ *   - `experience.used`   — spend state, changes on every advancement
+ *
+ * The retained entries are character-sheet *capacities/totals*, not spend state.
  */
 export const STAT_MAP: Record<string, string> = {
     wounds_max: 'wounds.max',
-    wounds_current: 'wounds.value',
     fate_max: 'fate.max',
-    fate_current: 'fate.value',
-    insanity: 'insanity',
-    corruption: 'corruption',
     xp_total: 'experience.total',
-    xp_used: 'experience.used',
 };
 
 /**
