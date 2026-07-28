@@ -12,6 +12,7 @@
 
 import api from '../../api';
 import type { KankaApiAttribute, KankaApiId, KankaApiQuestElement, KankaApiTimelineElement } from '../../types/kanka';
+import { decodeEventGraphAttribute } from '../../utils/eventGraphCodec.ts';
 import { logError, logInfo } from '../../util/logger';
 import ApplicationV2 = foundry.applications.api.ApplicationV2;
 import type { DeepPartial } from 'fvtt-types/utils';
@@ -410,7 +411,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
                 const attrs = await api.getEntityAttributes(campaignId, graphEntityId);
                 const graphAttr = attrs.find((a: KankaApiAttribute) => a.name === 'event_graph');
                 if (graphAttr?.value) {
-                    const parsedRaw: unknown = JSON.parse(graphAttr.value);
+                    const parsedRaw: unknown = await decodeEventGraphAttribute(graphAttr.value);
                     if (parsedRaw === null || typeof parsedRaw !== 'object') return;
                     const eventsRaw: unknown = Reflect.get(parsedRaw, 'events');
                     if (eventsRaw) {
@@ -440,6 +441,18 @@ export default class EventTrackerApplication extends ApplicationV2 {
                 }
             } catch (err) {
                 logError('EventTracker: failed to load event_graph attribute', err);
+                // Degrade VISIBLY (#493). An unreadable attribute previously only
+                // hit the console, so the tracker presented an empty graph that was
+                // indistinguishable from a campaign with no events — which is how
+                // the truncation went unnoticed. Surface it to the GM, carrying the
+                // codec's specific message (e.g. "appears truncated at N characters")
+                // rather than a bare failure.
+                if (game.user?.isGM === true) {
+                    const detail = err instanceof Error ? err.message : String(err);
+                    ui.notifications?.error(`Kanka EventTracker: could not read the campaign event graph — ${detail}`, {
+                        permanent: true,
+                    });
+                }
             }
         }
 
