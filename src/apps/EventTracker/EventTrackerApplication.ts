@@ -10,61 +10,38 @@
  * Resolved state synced bidirectionally with Kanka via element colour.
  */
 
-import api from '../../api';
-import type { KankaApiAttribute, KankaApiId, KankaApiQuestElement, KankaApiTimelineElement } from '../../types/kanka';
-import { decodeEventGraphAttribute } from '../../utils/eventGraphCodec.ts';
-import { logError, logInfo } from '../../util/logger';
-import ApplicationV2 = foundry.applications.api.ApplicationV2;
 import type { DeepPartial } from 'fvtt-types/utils';
-function assertType<T>(_value: unknown): asserts _value is T {}
-
-function getGameProp<T>(key: string): T | undefined {
-    const raw: unknown = Reflect.get(game, key);
-    if (raw === null || raw === undefined) return undefined;
-    assertType<T>(raw);
-    return raw;
-}
+import api from '../../api';
+import localization from '../../state/localization';
+import type { KankaApiId, KankaApiQuestElement, KankaApiTimelineElement } from '../../types/kanka';
+import { logError, logInfo } from '../../util/logger';
+import { type PlainObject, asRecord, readFunction, readProp, readString } from '../../util/reflection';
+import type { DispositionEntry, DispositionMap, EventGraph, EventGraphNode, EventGraphPayload, NpcDisposition, RequirementNode } from './eventGraphPayload';
+import { readSystemEventGraph } from './systemEventGraph';
+import ApplicationV2 = foundry.applications.api.ApplicationV2;
 
 const RESOLVED_COLOUR = '#22cc66';
 
-/**
- * A requirement node in the dependency tree.
- * - null: no dependencies (always satisfied)
- * - string: a single event ID (leaf)
- * - {any: RequirementNode[]}: at least one child must be resolved
- * - {all: RequirementNode[]}: every child must be resolved
- */
-type RequirementNode = null | string | { any: RequirementNode[] } | { all: RequirementNode[] };
+/** Name of the Kanka timeline (or quest) that carries the campaign event graph. */
+const CAMPAIGN_TIMELINE_NAME = 'Campaign Timeline';
 
-interface EventGraphNode {
-    name: string;
-    source: string;
-    location?: string;
-    /** Dependency tree. null = no dependencies. For legacy data, may be an array (treated as implicit all). */
-    requires?: RequirementNode | RequirementNode[];
-    /** Legacy flat OR — normalised into requires on load. */
-    requires_any?: string[] | null;
-    excuse?: Record<string, string>;
-    is_day_end?: boolean;
-}
+/** Idle time after the last keystroke before a PC attitude is pushed to Kanka. */
+const ATTITUDE_SAVE_DEBOUNCE_MS = 1500;
 
-type EventGraph = Record<string, EventGraphNode>;
+/** How long a cross-tab link's target stays highlighted after the jump. */
+const CROSS_LINK_FLASH_MS = 1500;
 
-interface DispositionEntry {
-    default?: boolean;
-    trigger?: string;
-    attitude: string;
-    note: string;
-}
+/** Canvas size for a scene spawned from a location that has no map yet. */
+const SPAWNED_SCENE_DIMENSION = 1000;
 
-interface NpcDisposition {
-    entity_id: number | null;
-    states: DispositionEntry[];
-    /** Per-PC attitudes loaded from Kanka entity attributes. Key = PC name, value = free text. */
-    pcAttitudes: Record<string, string>;
-}
+const WINDOW_HEIGHT = 750;
+const WINDOW_WIDTH = 720;
 
-type DispositionMap = Record<string, NpcDisposition>;
+/** "Day M<n>" sources sort after every numbered day; offset keeps them contiguous. */
+const MIDNIGHT_DAY_OFFSET = 100;
+
+/** Sort key for a source whose name carries no day number — always last. */
+const UNDATED_SOURCE_SORT_KEY = 9999;
 
 interface ElementRef {
     type: 'quest' | 'timeline';
@@ -82,6 +59,47 @@ interface TrackerState {
 
 type TabId = 'timeline' | 'location' | 'relations';
 
+/** Narrow a `data-tab` attribute to a tab id, falling back to the first tab. */
+function asTabId(raw: string | undefined): TabId {
+    return raw === 'timeline' || raw === 'location' || raw === 'relations' ? raw : 'timeline';
+}
+
+/**
+ * Index a record honestly: a missing key yields `undefined`.
+ *
+ * The event graph is keyed by vault-authored ids, so a lookup can always miss.
+ * Plain `record[key]` hides that (its type says the value is always there),
+ * which is how a missing node becomes an undefined-property crash at render.
+ */
+function lookup<T>(record: Record<string, T>, key: string): T | undefined {
+    return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
+/** First element of a list, honestly typed — an empty list yields `undefined`. */
+function first<T>(items: readonly T[]): T | undefined {
+    return items.length > 0 ? items[0] : undefined;
+}
+
+/** True when an optional authored string carries content. */
+function hasText(value: string | null | undefined): value is string {
+    return value !== null && value !== undefined && value !== '';
+}
+
+/** True when an optional authored list has at least one entry. */
+function hasEntries<T>(value: readonly T[] | null | undefined): value is readonly T[] {
+    return value !== null && value !== undefined && value.length > 0;
+}
+
+/**
+ * Record one quest/timeline element under the event id it carries, tracking
+ * whether Kanka has it marked resolved. Elements with no event id are skipped.
+ */
+function indexElement(byEventId: Map<string, ElementRef>, resolvedIds: Set<string>, eventId: string | null, ref: ElementRef): void {
+    if (eventId === null || eventId === '') return;
+    byEventId.set(eventId, ref);
+    if (ref.element.colour === RESOLVED_COLOUR) resolvedIds.add(eventId);
+}
+
 export default class EventTrackerApplication extends ApplicationV2 {
     #state: TrackerState | null = null;
     #campaignId: KankaApiId | null = null;
@@ -92,21 +110,23 @@ export default class EventTrackerApplication extends ApplicationV2 {
     static override DEFAULT_OPTIONS: DeepPartial<ApplicationV2.Configuration> = {
         id: 'kanka-event-tracker',
         window: {
-            title: 'Event Tracker',
+            // eslint-disable-next-line no-restricted-syntax -- this IS a localization key; the rule flags every title literal
+            title: 'KANKA.eventTracker.title',
             resizable: true,
             controls: [
                 {
                     icon: 'fa-solid fa-rotate-right',
-                    label: 'Reload',
+                    label: 'KANKA.eventTracker.reload',
                     action: 'reload',
                 },
             ],
         },
         position: {
-            height: 750,
-            width: 720,
+            height: WINDOW_HEIGHT,
+            width: WINDOW_WIDTH,
         },
         actions: {
+            // eslint-disable-next-line @typescript-eslint/unbound-method -- boundary: Foundry invokes an action handler with the Application as `this`, which handleReload declares
             reload: EventTrackerApplication.handleReload,
         },
     };
@@ -123,12 +143,12 @@ export default class EventTrackerApplication extends ApplicationV2 {
     async open(): Promise<void> {
         if (this.#state) {
             this.#message = null;
-            this.render(true);
+            await this.redraw();
             return;
         }
 
         this.#message = '<i class="fas fa-spinner fa-spin"></i> Loading event data from Kanka...';
-        this.render(true);
+        await this.redraw();
 
         try {
             await this.loadState();
@@ -138,22 +158,52 @@ export default class EventTrackerApplication extends ApplicationV2 {
             logError('EventTracker: failed to load state', err);
         }
 
-        this.render(true);
+        await this.redraw();
     }
 
     static async handleReload(this: EventTrackerApplication): Promise<void> {
         this.#state = null;
         this.#attitudesLoaded = false;
-        this.open();
+        await this.open();
+    }
+
+    /**
+     * Force a full re-render. Wraps the V2 `render` options form — the bare
+     * boolean overload is deprecated — and swallows nothing: a render failure
+     * is logged rather than surfacing as an unhandled rejection from the
+     * fire-and-forget call sites below.
+     */
+    private async redraw(): Promise<void> {
+        await this.render({ force: true });
+    }
+
+    /**
+     * Run async work from a synchronous caller (a DOM handler, a render pass)
+     * without leaking an unhandled rejection. Every fire-and-forget path in
+     * this app goes through here so a failure is logged, not swallowed.
+     */
+    private detach(task: () => Promise<void>): void {
+        // eslint-disable-next-line no-restricted-syntax -- boundary: a rejection value is genuinely untyped; it is only logged
+        task().catch((err: unknown) => {
+            logError('EventTracker: background task failed', err);
+        });
+    }
+
+    /** Fire-and-forget redraw for synchronous callers. */
+    private queueRedraw(): void {
+        this.detach(async () => {
+            await this.redraw();
+        });
     }
 
     // ── Foundry render ──
 
+    // eslint-disable-next-line no-restricted-syntax, @typescript-eslint/require-await -- boundary: Foundry's _renderHTML contract is (context, options) => Promise<HTMLElement>; neither argument is read here
     override async _renderHTML(_context: unknown, _options: unknown): Promise<HTMLElement> {
         const wrapper = document.createElement('div');
         wrapper.classList.add('event-tracker');
 
-        if (this.#message) {
+        if (this.#message !== null) {
             wrapper.innerHTML = `<p style="padding:12px;">${this.#message}</p>`;
             return wrapper;
         }
@@ -172,10 +222,13 @@ export default class EventTrackerApplication extends ApplicationV2 {
         } else if (this.#activeTab === 'location') {
             wrapper.appendChild(this.buildLocationContent());
         } else {
-            if (!this.#attitudesLoaded && this.#campaignId) {
+            if (!this.#attitudesLoaded && this.#campaignId !== null) {
                 this.#attitudesLoaded = true;
                 wrapper.innerHTML += '<p style="padding:12px;"><i class="fas fa-spinner fa-spin"></i> Loading NPC attitudes...</p>';
-                this.loadNpcAttitudes().then(async () => this.render(true));
+                this.detach(async () => {
+                    await this.loadNpcAttitudes();
+                    await this.redraw();
+                });
                 return wrapper;
             }
             wrapper.appendChild(this.buildRelationsContent());
@@ -184,6 +237,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
         return wrapper;
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- boundary: Foundry's _replaceHTML contract passes render options this app does not read
     override _replaceHTML(result: HTMLElement, content: HTMLElement, _options: unknown): void {
         content.replaceChildren(result);
         this.activateListeners(result);
@@ -193,39 +247,42 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
     private activateListeners(html: HTMLElement): void {
         for (const cb of html.querySelectorAll<HTMLInputElement>('input[data-event-id]')) {
-            cb.addEventListener('change', async (ev) => {
-                const tRaw: unknown = ev.currentTarget;
-                if (tRaw === null || typeof tRaw !== 'object' || !('dataset' in tRaw)) return;
-                assertType<HTMLInputElement>(tRaw);
-                await this.toggleResolved(tRaw.dataset['eventId'] ?? '', tRaw.checked);
+            cb.addEventListener('change', () => {
+                this.detach(async () => {
+                    await this.toggleResolved(cb.dataset['eventId'] ?? '', cb.checked);
+                });
             });
         }
 
         for (const btn of html.querySelectorAll<HTMLButtonElement>('.evt-tab-btn')) {
             btn.addEventListener('click', () => {
-                const rawTab = btn.dataset['tab'];
-                this.#activeTab = rawTab === 'timeline' || rawTab === 'location' || rawTab === 'relations' ? rawTab : 'timeline';
-                this.render(true);
+                this.#activeTab = asTabId(btn.dataset['tab']);
+                this.queueRedraw();
             });
         }
 
-        html.querySelector('.evt-day-prev')?.addEventListener('click', async () => this.changeDay(-1));
-        html.querySelector('.evt-day-next')?.addEventListener('click', async () => this.changeDay(1));
+        html.querySelector('.evt-day-prev')?.addEventListener('click', () => {
+            this.detach(async () => {
+                await this.changeDay(-1);
+            });
+        });
+        html.querySelector('.evt-day-next')?.addEventListener('click', () => {
+            this.detach(async () => {
+                await this.changeDay(1);
+            });
+        });
 
         for (const btn of html.querySelectorAll<HTMLButtonElement>('.evt-scene-btn')) {
-            btn.addEventListener('click', async () => {
+            btn.addEventListener('click', () => {
                 const loc = btn.dataset['location'] ?? '';
                 const action = btn.dataset['sceneAction'] ?? '';
-                if (action === 'go') {
-                    const scene = this.findScene(loc);
-                    const sceneObj: unknown = scene;
-                    if (sceneObj !== null && typeof sceneObj === 'object' && 'view' in sceneObj) {
-                        assertType<{ view(): Promise<unknown> }>(sceneObj);
-                        await sceneObj.view();
+                this.detach(async () => {
+                    if (action === 'go') {
+                        await this.viewScene(loc);
+                    } else if (action === 'spawn') {
+                        await this.spawnScene(loc);
                     }
-                } else if (action === 'spawn') {
-                    await this.spawnScene(loc);
-                }
+                });
             });
         }
 
@@ -237,8 +294,10 @@ export default class EventTrackerApplication extends ApplicationV2 {
                 timer = setTimeout(() => {
                     const charName = input.dataset['char'] ?? '';
                     const key = input.dataset['attKey'] ?? '';
-                    this.savePcAttitude(charName, key, input.value);
-                }, 1500);
+                    this.detach(async () => {
+                        await this.savePcAttitude(charName, key, input.value);
+                    });
+                }, ATTITUDE_SAVE_DEBOUNCE_MS);
             });
         }
 
@@ -246,17 +305,15 @@ export default class EventTrackerApplication extends ApplicationV2 {
         for (const link of html.querySelectorAll<HTMLAnchorElement>('.evt-xlink')) {
             link.addEventListener('click', (ev) => {
                 ev.preventDefault();
-                const rawLinkTab = link.dataset['tab'];
-                const tab: TabId = rawLinkTab === 'timeline' || rawLinkTab === 'location' || rawLinkTab === 'relations' ? rawLinkTab : 'timeline';
                 const group = link.dataset['group'] ?? '';
-                this.#activeTab = tab;
-                this.render(true);
+                this.#activeTab = asTabId(link.dataset['tab']);
+                this.queueRedraw();
                 requestAnimationFrame(() => {
                     const target = html.closest('.event-tracker')?.querySelector(`[data-group-name="${CSS.escape(group)}"]`);
                     if (target) {
                         target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         target.classList.add('evt-flash');
-                        setTimeout(() => target.classList.remove('evt-flash'), 1500);
+                        setTimeout(() => target.classList.remove('evt-flash'), CROSS_LINK_FLASH_MS);
                     }
                 });
             });
@@ -267,7 +324,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
     private getCurrentDay(): number {
         try {
-            const raw: unknown = game.settings?.get('kanka-foundry', 'currentDay');
+            const raw = game.settings?.get('kanka-foundry', 'currentDay');
             return typeof raw === 'number' ? raw : 0;
         } catch {
             return 0;
@@ -279,51 +336,51 @@ export default class EventTrackerApplication extends ApplicationV2 {
         const next = Math.max(0, current + delta);
         try {
             await game.settings?.set('kanka-foundry', 'currentDay', next);
-        } catch {
-            /* ignore */
+        } catch (err) {
+            logError('EventTracker: failed to persist the current day', err);
         }
-        this.render(true);
+        await this.redraw();
     }
 
     private static sourceDayNumber(source: string): number | null {
-        const m = source.match(/^Day\s+(M?\d+)/);
-        if (!m) return null;
-        const d = m[1];
+        const d = /^Day\s+(M?\d+)/.exec(source)?.[1];
         if (d === undefined) return null;
-        return d.startsWith('M') ? 100 + Number.parseInt(d.slice(1), 10) : Number.parseInt(d, 10);
+        return d.startsWith('M') ? MIDNIGHT_DAY_OFFSET + Number.parseInt(d.slice(1), 10) : Number.parseInt(d, 10);
     }
 
     private static sourceSortKey(name: string): number {
-        return EventTrackerApplication.sourceDayNumber(name) ?? 9999;
+        return EventTrackerApplication.sourceDayNumber(name) ?? UNDATED_SOURCE_SORT_KEY;
     }
 
     // ── Scene integration ──
 
-    private findScene(locationName: string): unknown {
-        const scenes: unknown = getGameProp('scenes');
-        if (scenes === null || typeof scenes !== 'object') return null;
-        const getNameFn: unknown = Reflect.get(scenes, 'getName');
-        if (typeof getNameFn !== 'function') return null;
-        assertType<(n: string) => unknown>(getNameFn);
-        return getNameFn.call(scenes, locationName) ?? null;
+    /** The Scene document named for a location, or undefined when none exists. */
+    private findScene(locationName: string): PlainObject | undefined {
+        const scenes = readProp(game, 'scenes');
+        const getName = readFunction<(name: string) => PlainObject | undefined>(scenes, 'getName');
+        if (getName === undefined) return undefined;
+        return asRecord(getName.call(scenes, locationName));
     }
 
     private getActiveSceneName(): string {
-        const scenes: unknown = getGameProp('scenes');
-        if (scenes === null || typeof scenes !== 'object') return '';
-        const active: unknown = Reflect.get(scenes, 'active');
-        if (active === null || typeof active !== 'object') return '';
-        const name: unknown = Reflect.get(active, 'name');
-        return typeof name === 'string' ? name : '';
+        return readString(readProp(readProp(game, 'scenes'), 'active'), 'name') ?? '';
+    }
+
+    /** Activate the Scene bound to a location, if Foundry has one. */
+    private async viewScene(locationName: string): Promise<void> {
+        const scene = this.findScene(locationName);
+        const view = readFunction<() => Promise<void>>(scene, 'view');
+        if (view === undefined) return;
+        await view.call(scene);
     }
 
     private async spawnScene(locationName: string): Promise<void> {
+        const create = readFunction<(data: PlainObject) => Promise<void>>(Scene, 'create');
+        if (create === undefined) return;
         try {
-            const SceneClass: unknown = Scene;
-            assertType<{ create(data: Record<string, unknown>): Promise<unknown> }>(SceneClass);
-            await SceneClass.create({ name: locationName, width: 1000, height: 1000 });
+            await create.call(Scene, { name: locationName, width: SPAWNED_SCENE_DIMENSION, height: SPAWNED_SCENE_DIMENSION });
             logInfo(`EventTracker: created scene "${locationName}"`);
-            this.render(true);
+            await this.redraw();
         } catch (err) {
             logError(`EventTracker: failed to create scene "${locationName}"`, err);
         }
@@ -332,18 +389,16 @@ export default class EventTrackerApplication extends ApplicationV2 {
     // ── PC names from Foundry actors ──
 
     private getPcNames(): string[] {
-        const actorsRaw: unknown = Reflect.get(game, 'actors');
-        if (!Array.isArray(actorsRaw)) return [];
-        const actorsArr: unknown[] = Array.from(actorsRaw as unknown[]);
+        const actors = readProp(game, 'actors');
+        if (!Array.isArray(actors)) return [];
         const names: string[] = [];
-        for (const actorUnk of actorsArr) {
-            if (actorUnk === null || typeof actorUnk !== 'object') continue;
-            assertType<{ name: string; type: string }>(actorUnk);
+        for (const actor of actors) {
             // wh40k-rpg actor types are <system>-<kind>; legacy bare
             // 'character' is migrated away by
             // 2026-05-11-system-prefix-actor-types.
-            if (actorUnk.type.endsWith('-character')) {
-                names.push(actorUnk.name);
+            const name = readString(actor, 'name');
+            if (name !== undefined && readString(actor, 'type')?.endsWith('-character') === true) {
+                names.push(name);
             }
         }
         return names.sort();
@@ -351,17 +406,78 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
     // ── Data loading ──
 
+    /** Timeline elements, or an empty list when the timeline can't be read. */
+    private async fetchTimelineElements(campaignId: KankaApiId, timelineId: KankaApiId): Promise<KankaApiTimelineElement[]> {
+        try {
+            return await api.getTimelineElements(campaignId, timelineId);
+        } catch (err) {
+            logError('EventTracker: failed to load timeline elements', err);
+            return [];
+        }
+    }
+
+    /**
+     * Read the campaign event graph from the wh40k-rpg system (#33).
+     *
+     * The graph used to arrive over the Kanka `event_graph` attribute and no
+     * longer fits in one (65,535-char cap, exceeded and still growing). It is
+     * also GM-SECRET by the operator's ruling, so it now lives in a
+     * GM-permissioned JournalEntry that the system loads at `ready`; this reads
+     * that already-parsed copy instead of carrying a second transport.
+     *
+     * Degrades VISIBLY (#493). An unreadable graph previously only hit the
+     * console, so the tracker presented an empty graph indistinguishable from a
+     * campaign with no events — which is how the truncation went unnoticed.
+     *
+     * `entity_id` is filled in from Kanka rather than from the payload: the vault
+     * has no Kanka ids, and Kanka is the authority for them anyway. It drives the
+     * per-PC attitude attributes, which still round-trip through Kanka.
+     */
+    private async loadEventGraph(campaignId: KankaApiId): Promise<EventGraphPayload> {
+        const payload = readSystemEventGraph();
+        if (Object.keys(payload.graph).length === 0) {
+            logError('EventTracker: the wh40k-rpg system has no event graph loaded');
+            if (game.user?.isGM === true) {
+                ui.notifications?.error(localization.localize('KANKA.eventTracker.noGraph'), { permanent: true });
+            }
+            return payload;
+        }
+
+        await this.resolveDispositionEntityIds(campaignId, payload.dispositions);
+        return payload;
+    }
+
+    /**
+     * Fill each disposition's Kanka `entity_id` by name, in ONE request.
+     *
+     * The id used to be baked into the graph payload by the vault importer. It
+     * is read from Kanka now, so a character renamed or re-created in Kanka is
+     * picked up on the next open instead of pointing at a stale id.
+     */
+    private async resolveDispositionEntityIds(campaignId: KankaApiId, dispositions: DispositionMap): Promise<void> {
+        if (Object.keys(dispositions).length === 0) return;
+        try {
+            const characters = await api.getAllCharacters(campaignId);
+            const idsByName = new Map(characters.map((c) => [c.name, c.entity_id]));
+            for (const [name, npc] of Object.entries(dispositions)) {
+                npc.entity_id = idsByName.get(name) ?? null;
+            }
+        } catch (err) {
+            // Non-fatal: the graph still renders, only the per-PC attitude
+            // round-trip is unavailable — so say so rather than failing silently.
+            logError('EventTracker: could not resolve Kanka entity ids for dispositions', err);
+        }
+    }
+
     private async loadState(): Promise<void> {
         if (!api.isReady) {
             throw new Error('Kanka API not connected. Configure your access token in module settings.');
         }
 
-        const campaigns = await api.getAllCampaigns();
-        if (campaigns.length === 0) {
+        const firstCampaign = first(await api.getAllCampaigns());
+        if (firstCampaign === undefined) {
             throw new Error('No campaigns found. Check your Kanka API token and base URL.');
         }
-        const firstCampaign = campaigns[0];
-        if (!firstCampaign) throw new Error('No campaigns found.');
         const campaignId = Number(firstCampaign.id);
         this.#campaignId = campaignId;
 
@@ -371,90 +487,21 @@ export default class EventTrackerApplication extends ApplicationV2 {
         // Quest elements — getAllQuests with ?related=1 includes elements inline
         const quests = await api.getAllQuests(campaignId);
         for (const quest of quests) {
-            if (!quest.elements?.length) continue;
             for (const elem of quest.elements) {
-                const eventId = elem.role;
-                if (!eventId) continue;
-                elementsByEventId.set(eventId, { type: 'quest', parentId: quest.id, element: elem });
-                if (elem.colour === RESOLVED_COLOUR) resolvedIds.add(eventId);
+                indexElement(elementsByEventId, resolvedIds, elem.role, { type: 'quest', parentId: quest.id, element: elem });
             }
         }
 
-        // Timeline elements — need separate fetch since getAllTimelines doesn't inline them
-        let timelineEntityId: number | null = null;
+        // Timeline elements — need a separate fetch since getAllTimelines doesn't inline them
         const timelines = await api.getAllTimelines(campaignId);
-        const campaignTimeline = timelines.find((t) => t.name === 'Campaign Timeline');
-        if (campaignTimeline) {
-            timelineEntityId = Number(campaignTimeline.entity_id);
-            let elements: KankaApiTimelineElement[];
-            try {
-                elements = await api.getTimelineElements(campaignId, campaignTimeline.id);
-            } catch {
-                elements = [];
-            }
-            for (const elem of elements) {
-                const eventId = elem.date;
-                if (!eventId) continue;
-                elementsByEventId.set(eventId, { type: 'timeline', parentId: campaignTimeline.id, element: elem });
-                if (elem.colour === RESOLVED_COLOUR) resolvedIds.add(eventId);
+        const campaignTimeline = timelines.find((t) => t.name === CAMPAIGN_TIMELINE_NAME);
+        if (campaignTimeline !== undefined) {
+            for (const elem of await this.fetchTimelineElements(campaignId, campaignTimeline.id)) {
+                indexElement(elementsByEventId, resolvedIds, elem.date, { type: 'timeline', parentId: campaignTimeline.id, element: elem });
             }
         }
 
-        let graph: EventGraph = {};
-        const dispositions: DispositionMap = {};
-        const graphEntityId =
-            timelineEntityId ??
-            (quests.find((q) => q.name === 'Campaign Timeline') ? Number(quests.find((q) => q.name === 'Campaign Timeline')?.entity_id) : null);
-
-        if (graphEntityId) {
-            try {
-                const attrs = await api.getEntityAttributes(campaignId, graphEntityId);
-                const graphAttr = attrs.find((a: KankaApiAttribute) => a.name === 'event_graph');
-                if (graphAttr?.value) {
-                    const parsedRaw: unknown = await decodeEventGraphAttribute(graphAttr.value);
-                    if (parsedRaw === null || typeof parsedRaw !== 'object') return;
-                    const eventsRaw: unknown = Reflect.get(parsedRaw, 'events');
-                    if (eventsRaw) {
-                        assertType<EventGraph>(eventsRaw);
-                        graph = eventsRaw;
-                        const rawDisps: unknown = Reflect.get(parsedRaw, 'dispositions') ?? {};
-                        if (rawDisps !== null && typeof rawDisps === 'object') {
-                            assertType<Record<string, unknown>>(rawDisps);
-                            for (const [name, val] of Object.entries(rawDisps)) {
-                                if (Array.isArray(val)) {
-                                    assertType<DispositionEntry[]>(val);
-                                    dispositions[name] = { entity_id: null, states: val, pcAttitudes: {} };
-                                } else if (val !== null && typeof val === 'object') {
-                                    const entityIdRaw: unknown = Reflect.get(val, 'entity_id');
-                                    const statesRaw: unknown = Reflect.get(val, 'states');
-                                    const entityId = typeof entityIdRaw === 'number' ? entityIdRaw : null;
-                                    assertType<DispositionEntry[]>(statesRaw);
-                                    const states: DispositionEntry[] = Array.isArray(statesRaw) ? statesRaw : [];
-                                    dispositions[name] = { entity_id: entityId, states, pcAttitudes: {} };
-                                }
-                            }
-                        }
-                    } else {
-                        assertType<EventGraph>(parsedRaw);
-                        graph = parsedRaw;
-                    }
-                }
-            } catch (err) {
-                logError('EventTracker: failed to load event_graph attribute', err);
-                // Degrade VISIBLY (#493). An unreadable attribute previously only
-                // hit the console, so the tracker presented an empty graph that was
-                // indistinguishable from a campaign with no events — which is how
-                // the truncation went unnoticed. Surface it to the GM, carrying the
-                // codec's specific message (e.g. "appears truncated at N characters")
-                // rather than a bare failure.
-                if (game.user?.isGM === true) {
-                    const detail = err instanceof Error ? err.message : String(err);
-                    ui.notifications?.error(`Kanka EventTracker: could not read the campaign event graph — ${detail}`, {
-                        permanent: true,
-                    });
-                }
-            }
-        }
+        const { graph, dispositions } = await this.loadEventGraph(campaignId);
 
         // Per-PC attitudes are lazy-loaded when the Relations tab is opened
         const pcNames = this.getPcNames();
@@ -464,10 +511,11 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
     /** Lazy-load per-NPC attitudes from Kanka entity attributes. */
     private async loadNpcAttitudes(): Promise<void> {
-        if (!this.#state || !this.#campaignId) return;
+        if (this.#state === null || this.#campaignId === null) return;
         for (const [, npc] of Object.entries(this.#state.dispositions)) {
-            if (!npc.entity_id) continue;
+            if (npc.entity_id === null) continue;
             try {
+                // eslint-disable-next-line no-await-in-loop -- deliberate: one request per NPC, serialized so a large cast does not burst Kanka's rate limit
                 const attrs = await api.getEntityAttributes(this.#campaignId, npc.entity_id);
                 for (const attr of attrs) {
                     if (attr.name.startsWith('attitude_')) {
@@ -483,7 +531,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
     // ── Kanka sync ──
 
     private async toggleResolved(eventId: string, resolved: boolean): Promise<void> {
-        if (!this.#state || !this.#campaignId) return;
+        if (this.#state === null || this.#campaignId === null) return;
         const ref = this.#state.elementsByEventId.get(eventId);
         if (!ref) return;
 
@@ -504,13 +552,13 @@ export default class EventTrackerApplication extends ApplicationV2 {
         } catch (err) {
             logError(`EventTracker: failed to update ${eventId}`, err);
         }
-        this.render(true);
+        await this.redraw();
     }
 
     private async savePcAttitude(charName: string, pcName: string, value: string): Promise<void> {
-        if (!this.#state || !this.#campaignId) return;
-        const npc = this.#state.dispositions[charName];
-        if (!npc?.entity_id) return;
+        if (this.#state === null || this.#campaignId === null) return;
+        const npc = lookup(this.#state.dispositions, charName);
+        if (npc?.entity_id === undefined || npc.entity_id === null) return;
 
         const attrName = `attitude_${pcName}`;
         npc.pcAttitudes[pcName] = value;
@@ -550,7 +598,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
     private getRequirements(node: EventGraphNode): RequirementNode {
         // New format: requires is already a single node (null, string, {any}, {all})
         if (node.requires !== undefined && !Array.isArray(node.requires)) {
-            if (node.requires_any?.length) {
+            if (hasEntries(node.requires_any)) {
                 // Merge: requires AND (any of requires_any)
                 return { all: [node.requires, { any: node.requires_any }] };
             }
@@ -560,19 +608,15 @@ export default class EventTrackerApplication extends ApplicationV2 {
         // Legacy format: requires is a string[] (implicit all), requires_any is string[] (implicit any)
         const children: RequirementNode[] = [];
         if (Array.isArray(node.requires)) {
-            for (const r of node.requires) {
-                assertType<RequirementNode>(r);
-                children.push(r);
-            }
+            children.push(...node.requires);
         }
-        if (node.requires_any?.length) {
+        if (hasEntries(node.requires_any)) {
             children.push({ any: node.requires_any });
         }
 
         if (children.length === 0) return null;
         if (children.length === 1) {
-            const first = children[0];
-            return first !== undefined ? first : null;
+            return first(children) ?? null;
         }
         return { all: children };
     }
@@ -580,8 +624,8 @@ export default class EventTrackerApplication extends ApplicationV2 {
     private isAvailable(eventId: string): boolean {
         const state = this.#state;
         if (!state) return false;
-        const node = state.graph[eventId];
-        if (!node) return false;
+        const node = lookup(state.graph, eventId);
+        if (node === undefined) return false;
         return this.evalNode(this.getRequirements(node));
     }
 
@@ -589,11 +633,11 @@ export default class EventTrackerApplication extends ApplicationV2 {
     private formatDep(id: string): string {
         const state = this.#state;
         if (!state) return id;
-        const dep = state.graph[id];
-        if (!dep) return id;
+        const dep = lookup(state.graph, id);
+        if (dep === undefined) return id;
 
-        const locRaw = dep.location ? dep.location.replace(/\[\[|\]\]/g, '') : '';
-        const sourceRaw = dep.source ?? '';
+        const locRaw = hasText(dep.location) ? dep.location.replace(/\[\[|\]\]/g, '') : '';
+        const sourceRaw = dep.source;
 
         let result = `<strong>${dep.name}</strong>`;
         if (locRaw) {
@@ -648,8 +692,8 @@ export default class EventTrackerApplication extends ApplicationV2 {
     private getBlockingReasonsHtml(eventId: string): string {
         const state = this.#state;
         if (!state) return '';
-        const node = state.graph[eventId];
-        if (!node) return '';
+        const node = lookup(state.graph, eventId);
+        if (node === undefined) return '';
 
         const reqs = this.getRequirements(node);
         if (reqs === null) return '';
@@ -729,14 +773,14 @@ export default class EventTrackerApplication extends ApplicationV2 {
             srcSpan.className = 'evt-src';
             srcSpan.textContent = node.source;
             row.appendChild(srcSpan);
-        } else if (!showSource && node.location) {
+        } else if (!showSource && hasText(node.location)) {
             const locSpan = document.createElement('span');
             locSpan.className = 'evt-loc';
             locSpan.textContent = node.location;
             row.appendChild(locSpan);
         }
 
-        if (node.is_day_end) {
+        if (node.is_day_end === true) {
             const de = document.createElement('span');
             de.className = 'evt-day-end';
             de.textContent = '[DAY END]';
@@ -829,7 +873,7 @@ export default class EventTrackerApplication extends ApplicationV2 {
 
         const groupMap = new Map<string, { eventId: string; node: EventGraphNode }[]>();
         for (const [eventId, node] of Object.entries(state.graph)) {
-            const loc = node.location || 'No Location';
+            const loc = hasText(node.location) ? node.location : 'No Location';
             if (!groupMap.has(loc)) groupMap.set(loc, []);
             groupMap.get(loc)?.push({ eventId, node });
         }
@@ -903,9 +947,9 @@ export default class EventTrackerApplication extends ApplicationV2 {
         const state = this.#state;
         if (!state) return fallback;
 
-        let active = npc.states.find((e) => e.default);
+        let active = npc.states.find((e) => e.default === true);
         for (const entry of npc.states) {
-            if (entry.trigger && state.resolvedIds.has(entry.trigger)) {
+            if (hasText(entry.trigger) && state.resolvedIds.has(entry.trigger)) {
                 active = entry;
             }
         }
@@ -971,8 +1015,8 @@ export default class EventTrackerApplication extends ApplicationV2 {
             note.textContent = active.note;
             card.appendChild(note);
 
-            if (active.trigger) {
-                const triggerNode = state.graph[active.trigger];
+            if (hasText(active.trigger)) {
+                const triggerNode = lookup(state.graph, active.trigger);
                 const triggerDiv = document.createElement('div');
                 triggerDiv.className = 'evt-rel-trigger';
                 triggerDiv.textContent = `Triggered by: ${triggerNode?.name ?? active.trigger}`;
@@ -980,9 +1024,9 @@ export default class EventTrackerApplication extends ApplicationV2 {
             }
 
             const currentIdx = npc.states.indexOf(active);
-            const nextEntry = npc.states.slice(currentIdx + 1).find((e) => e.trigger && !state.resolvedIds.has(e.trigger));
-            if (nextEntry?.trigger) {
-                const nextNode = state.graph[nextEntry.trigger];
+            const nextEntry = npc.states.slice(currentIdx + 1).find((e) => hasText(e.trigger) && !state.resolvedIds.has(e.trigger));
+            if (hasText(nextEntry?.trigger)) {
+                const nextNode = lookup(state.graph, nextEntry.trigger);
                 const nextDiv = document.createElement('div');
                 nextDiv.className = 'evt-rel-next';
                 nextDiv.textContent = `Next shift: ${nextEntry.attitude} (if ${nextNode?.name ?? nextEntry.trigger})`;

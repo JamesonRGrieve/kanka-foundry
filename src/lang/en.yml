@@ -3,6 +3,12 @@ KANKA:
         initializationError: |
             There was an error when initializing Kanka-Foundry. This might be due to problems with the Kanka-API or
             with your Token or Campaign settings.
+    eventTracker:
+        title: Event Tracker
+        reload: Reload
+        noGraph: >-
+            The wh40k-rpg system has no event graph loaded. The graph lives in a GM-only journal entry in this
+            world — run `deploy.sh --restart` to write it.
     conflicts:
         title: Resolve Kanka Conflicts
         intro: Foundry and Kanka disagree on the fields below. Choose which side to keep for each. Unselected rows are left unchanged and shown again next time.
