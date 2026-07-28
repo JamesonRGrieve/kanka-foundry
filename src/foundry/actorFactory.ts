@@ -1,6 +1,7 @@
 import type { KankaApiAttribute, KankaApiCharacter, KankaApiEntityId, KankaApiId } from '../types/kanka';
 import { isNonEmptyString, readFunction } from '../util/reflection';
 import { BIO_MAP, CHARACTERISTIC_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_MAP } from './actorAttributeMaps';
+import { advancementsToSystemPatch, parseAdvancements } from './advancements';
 import { classifyFoundryPath } from './actorConflictMapping';
 import { addConflicts } from './conflicts/conflictStore';
 import { type StoredConflict, conflictId } from './conflicts/types';
@@ -33,6 +34,24 @@ function parseTokenFrame(raw: string): TokenFrameValue | null {
         const { cx, cy, zoom } = parsed;
         if (typeof cx !== 'number' || typeof cy !== 'number' || typeof zoom !== 'number') return null;
         return { cx, cy, zoom };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Parse a JSON-valued Kanka attribute, or null when absent/malformed.
+ *
+ * Malformed returns null rather than throwing: a hand-edited attribute must cost
+ * that one override, not the whole actor sync.
+ * @param {string} raw  The raw attribute value.
+ * @returns {unknown}  The parsed value, or null.
+ */
+// eslint-disable-next-line no-restricted-syntax -- boundary: the attribute is arbitrary JSON authored in the vault; the caller's parser IS the validation
+function parseJsonAttribute(raw: string): unknown {
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
     } catch {
         return null;
     }
@@ -326,8 +345,15 @@ async function applyBaseActor(entity: KankaApiCharacter, actorData: Record<strin
 
     const baseSystem = isPlainRecord(baseObj['system']) ? baseObj['system'] : {};
     const kankaSystem = isPlainRecord(actorData['system']) ? actorData['system'] : {};
-    // base UNDER kanka: the base supplies the full stat block; Kanka data wins where set
-    actorData['system'] = foundry.utils.mergeObject(baseSystem, kankaSystem, { inplace: false });
+    // Per-character advancements OVER the base (dh-campaign#34). Without this the
+    // canonical-sheet model only ever supplies the base, so a PDF Commander whose
+    // base is a rank-and-file hybrid has no Command and no Common Lore — the sheet
+    // is whatever bestiary entry it points at. `advancements` is the override
+    // channel the vault schema always declared; this is what carries it.
+    const advancements = parseAdvancements(parseJsonAttribute(getStringAttribute(entity.attributes, 'advancements')));
+    const advanced = foundry.utils.mergeObject(baseSystem, advancementsToSystemPatch(advancements, baseSystem), { inplace: false });
+    // base+advancements UNDER kanka: Kanka data still wins where explicitly set
+    actorData['system'] = foundry.utils.mergeObject(advanced, kankaSystem, { inplace: false });
 
     // portrait: keep the Kanka one if present, else fall back to the base's image
     if (!isNonEmptyString(actorData['img']) && typeof baseObj['img'] === 'string') {
