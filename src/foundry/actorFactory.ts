@@ -1,8 +1,8 @@
 import type { KankaApiAttribute, KankaApiCharacter, KankaApiEntityId, KankaApiId } from '../types/kanka';
 import { isNonEmptyString, readFunction } from '../util/reflection';
 import { BIO_MAP, CHARACTERISTIC_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_MAP } from './actorAttributeMaps';
-import { advancementsToSystemPatch, parseAdvancements } from './advancements';
 import { classifyFoundryPath } from './actorConflictMapping';
+import { advancementsToSystemPatch, parseAdvancements } from './advancements';
 import { addConflicts } from './conflicts/conflictStore';
 import { type StoredConflict, conflictId } from './conflicts/types';
 import { syncTokenImage, type TokenFrameValue } from './tokenImage';
@@ -355,6 +355,31 @@ async function applyBaseActor(entity: KankaApiCharacter, actorData: Record<strin
     // base+advancements UNDER kanka: Kanka data still wins where explicitly set
     actorData['system'] = foundry.utils.mergeObject(advanced, kankaSystem, { inplace: false });
 
+    // Portrait pin: a named character derived from a pooled base (system.portraits)
+    // can pin its OWN variant so the image lives once on the generic and it
+    // inherits + selects instead of redefining a bespoke portrait. A pin is
+    // authoritative — it overrides any (possibly stale) Kanka image, since the
+    // character has explicitly opted to draw from the pool. `resolvePinnedPortrait`
+    // is the pure selector.
+    // eslint-disable-next-line no-restricted-syntax -- boundary: the pinned bust frame is an untyped Record off the base actor's toObject() output
+    let pinnedFrame: Record<string, unknown> | null = null;
+    const pinRaw = getStringAttribute(entity.attributes, 'portrait_pin');
+    if (pinRaw !== '') {
+        const basePortraits = isPlainRecord(baseSystem['portraits']) ? baseSystem['portraits'] : {};
+        // eslint-disable-next-line no-restricted-syntax -- boundary: base system.portraits.variants is an untyped array off toObject(); elements narrowed inside resolvePinnedPortrait
+        const variants: unknown[] = Array.isArray(basePortraits['variants']) ? (basePortraits['variants'] as unknown[]) : [];
+        const baseImg = typeof baseObj['img'] === 'string' ? baseObj['img'] : null;
+        const pin = Number.parseInt(pinRaw, 10);
+        const chosen = resolvePinnedPortrait(pin, baseImg, readTokenFrame(baseObj['prototypeToken']), variants);
+        if (chosen !== null) {
+            actorData['img'] = chosen.img;
+            pinnedFrame = chosen.frame;
+            const sys = isPlainRecord(actorData['system']) ? actorData['system'] : {};
+            const portraits = isPlainRecord(sys['portraits']) ? sys['portraits'] : {};
+            actorData['system'] = { ...sys, portraits: { ...portraits, pinned: pin } };
+        }
+    }
+
     // portrait: keep the Kanka one if present, else fall back to the base's image
     if (!isNonEmptyString(actorData['img']) && typeof baseObj['img'] === 'string') {
         actorData['img'] = baseObj['img'];
@@ -366,12 +391,65 @@ async function applyBaseActor(entity: KankaApiCharacter, actorData: Record<strin
     // The base's prototypeToken carries the COMPENDIUM name (e.g. "Aberrant (Ranged)").
     // Tokens dragged out must use THIS character's name, so force the token name to the
     // Kanka-derived actor name rather than letting the base's name survive the merge.
-    if (isPlainRecord(mergedToken)) mergedToken['name'] = actorData['name'];
+    if (isPlainRecord(mergedToken)) {
+        mergedToken['name'] = actorData['name'];
+        applyPinnedFrameToToken(mergedToken, pinnedFrame);
+    }
     actorData['prototypeToken'] = mergedToken;
 
     const items = [...baseItems, ...instanceItems];
     actorData['items'] = items;
     return items;
+}
+
+/** A portrait choice: its image and (optional) circular bust frame. */
+export interface PoolPortrait {
+    img: string;
+    // eslint-disable-next-line no-restricted-syntax -- boundary: a bust frame is an untyped flag payload (flags.wh40k-rpg.tokenFrame) off the base actor's toObject() output
+    frame: Record<string, unknown> | null;
+}
+
+/**
+ * Resolve a portrait `pin` against a pooled base's effective portrait pool: index 0
+ * is the base's own `img` (+ its bust frame), 1+ index into the base's
+ * `system.portraits.variants`. Returns the chosen image + frame, or null when the pin
+ * is invalid / out of range / the entry has no image (the caller then leaves the
+ * base-image fallback to run). Pure — no Foundry globals, so it is unit-tested.
+ */
+export function resolvePinnedPortrait(
+    pin: number,
+    baseImg: string | null,
+    baseFrame: PoolPortrait['frame'],
+    // eslint-disable-next-line no-restricted-syntax -- boundary: `variants` is the base actor's untyped system.portraits.variants array off toObject(); each entry is narrowed via isPlainRecord below
+    variants: readonly unknown[],
+): PoolPortrait | null {
+    if (!Number.isInteger(pin) || pin < 0) return null;
+    if (pin === 0) return baseImg === null ? null : { img: baseImg, frame: baseFrame };
+    const variant = variants[pin - 1];
+    if (!isPlainRecord(variant)) return null;
+    const img = variant['img'];
+    if (typeof img !== 'string') return null;
+    return { img, frame: isPlainRecord(variant['tokenFrame']) ? variant['tokenFrame'] : null };
+}
+
+/** Read a prototypeToken's `flags.wh40k-rpg.tokenFrame`, or null. */
+// eslint-disable-next-line no-restricted-syntax -- boundary: prototypeToken is an untyped field off the base actor's toObject() output; narrowed via isPlainRecord below
+function readTokenFrame(prototypeToken: unknown): Record<string, unknown> | null {
+    if (!isPlainRecord(prototypeToken)) return null;
+    const flags = isPlainRecord(prototypeToken['flags']) ? prototypeToken['flags'] : {};
+    const scope = isPlainRecord(flags['wh40k-rpg']) ? flags['wh40k-rpg'] : {};
+    return isPlainRecord(scope['tokenFrame']) ? scope['tokenFrame'] : null;
+}
+
+/** Stamp the pinned bust frame onto the merged prototype token (no-op when null). */
+// eslint-disable-next-line no-restricted-syntax -- boundary: token is the Kanka→Foundry prototypeToken payload (untyped Record), narrowed via isPlainRecord below
+function applyPinnedFrameToToken(token: Record<string, unknown>, frame: Record<string, unknown> | null): void {
+    if (frame === null) return;
+    const flags = isPlainRecord(token['flags']) ? { ...token['flags'] } : {};
+    const scope = isPlainRecord(flags['wh40k-rpg']) ? { ...flags['wh40k-rpg'] } : {};
+    scope['tokenFrame'] = frame;
+    flags['wh40k-rpg'] = scope;
+    token['flags'] = flags;
 }
 
 /** Replace an actor's embedded items with the base actor's canonical kit. */
