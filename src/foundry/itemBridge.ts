@@ -1,6 +1,7 @@
 import type { KankaApiAttribute, KankaApiId, KankaApiItem } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
 import { type PlainObject, asRecord, isRecord, readFunction, readProp, readRecord, readString } from '../util/reflection';
+import { validateItemSystem } from './contentSchema';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
 
@@ -259,6 +260,16 @@ export async function bridgeKankaItem(entity: KankaApiItem, campaignId: KankaApi
 
         const folder = await ensureItemFolder();
         const data = buildWorldItemData(source, entity, uuid, overrides, campaignId, folder?.id);
+
+        // Validate the FINAL merged system at the import boundary: reject a variant
+        // override that would write corrupt content (a ranged weapon flipped to
+        // melee, an invalid enum) rather than persisting it to the world.
+        const itemType = readString(data, 'type') ?? '';
+        const schemaErrors = validateItemSystem(itemType, data['system']);
+        if (schemaErrors.length > 0) {
+            logError(`Item bridge: refusing to write "${entity.name}" — invalid ${itemType} content:\n  - ${schemaErrors.join('\n  - ')}`);
+            return undefined;
+        }
 
         const existing = findWorldItemByEntityId(entity.id);
         if (existing) {
