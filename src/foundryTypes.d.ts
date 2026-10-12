@@ -1,4 +1,4 @@
-export {};
+import type { CampaignDayChangedHook, EventResolvedHook, PcAttitudeChangedHook } from './foundry/eventTrackerSync';
 
 type FlagData = {
     id: KankaApiEntityId;
@@ -109,7 +109,20 @@ declare module 'fvtt-types/configuration' {
         'kanka-foundry.collapseType_organisation': boolean;
         'kanka-foundry.collapseType_quest': boolean;
         'kanka-foundry.collapseType_race': boolean;
+        /** Legacy campaign day, read once to migrate it into the wh40k-rpg Event Tracker. */
         'kanka-foundry.currentDay': number;
         'kanka-foundry.pendingConflicts': string;
+    }
+
+    // The wh40k-rpg system's Event Tracker hooks, which the Kanka sync adapter
+    // (foundry/eventTrackerSync.ts) listens to. Declared here so `Hooks.on`
+    // types their payloads without a cast at the registration site.
+    // eslint-disable-next-line @typescript-eslint/no-shadow -- boundary: fvtt-types declares HookConfig inside `namespace Hooks`; augmenting it means re-opening that namespace
+    namespace Hooks {
+        interface HookConfig {
+            'wh40k-rpg.eventResolved': EventResolvedHook;
+            'wh40k-rpg.campaignDayChanged': CampaignDayChangedHook;
+            'wh40k-rpg.pcAttitudeChanged': PcAttitudeChangedHook;
+        }
     }
 }

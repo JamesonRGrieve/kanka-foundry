@@ -38,11 +38,10 @@ function setToken(token: string): void {
 }
 
 export function registerSettings(): void {
-    const languages =
-        moduleConfig.languages.reduce<Record<string, string>>((map, { lang, name }) => {
-            map[lang] = name;
-            return map;
-        }, {}) ?? {};
+    const languages = moduleConfig.languages.reduce<Record<string, string>>((map, { lang, name }) => {
+        map[lang] = name;
+        return map;
+    }, {});
 
     game.settings?.register('kanka-foundry', 'migrationVersion', {
         config: false,
@@ -57,7 +56,7 @@ export function registerSettings(): void {
         config: true,
         type: String,
         default: '',
-        onChange: (value) => api.switchBaseUrl(value ?? ''),
+        onChange: (value) => api.switchBaseUrl(value),
     });
 
     game.settings?.register('kanka-foundry', 'accessToken', {
@@ -89,12 +88,16 @@ export function registerSettings(): void {
         choices: {
             ...languages,
         },
-        onChange: async (value) => {
-            await localization.setLanguage(value ?? game.i18n?.lang ?? 'en');
-            for (const app of Object.values(ui.windows)) {
-                if (!(app instanceof KankaJournalApplication)) continue;
-                app.render();
-            }
+        onChange: (value) => {
+            localization
+                .setLanguage(value)
+                .then(() => {
+                    for (const app of Object.values(ui.windows)) {
+                        if (!(app instanceof KankaJournalApplication)) continue;
+                        app.render();
+                    }
+                })
+                .catch((error: Error) => logError('Failed to switch the import language', error));
         },
     });
 
@@ -244,6 +247,9 @@ export function registerSettings(): void {
         default: 'list',
     });
 
+    // Legacy campaign day from this module's retired Event Tracker. Still
+    // registered so eventTrackerSync can read it once and migrate it into the
+    // wh40k-rpg system's own campaign-day setting.
     game.settings?.register('kanka-foundry', 'currentDay', {
         scope: 'world',
         config: false,

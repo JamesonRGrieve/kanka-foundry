@@ -1,9 +1,7 @@
 import moduleConfig from '../../../public/module.json';
 import api from '../../api';
-function assertType<T>(_value: unknown): asserts _value is T {}
 import AccessToken from '../../api/AccessToken';
 import ConflictResolverApplication from '../../apps/ConflictResolver/ConflictResolverApplication';
-import EventTrackerApplication from '../../apps/EventTracker/EventTrackerApplication';
 import DefaultPageSheet from '../../apps/KankaJournal/DefaultPageSheet';
 import KankaJournalApplication from '../../apps/KankaJournal/KankaJournalApplication';
 import PostPageSheet from '../../apps/KankaJournal/PostPageSheet';
@@ -15,8 +13,11 @@ import { registerCampaignDescriptionHooks } from '../campaignJournal';
 import { bridgeKankaItem } from '../itemBridge';
 import { showError, showWarning } from '../notifications';
 import { registerSettings } from '../settings';
-import { syncTokenImage } from '../tokenImage';
 import { registerSyncBackHooks } from '../syncBack';
+import { syncTokenImage } from '../tokenImage';
+
+// eslint-disable-next-line no-restricted-syntax -- boundary: assertion-function parameter, the one sanctioned use of `unknown`
+function assertType<T>(_value: unknown): asserts _value is T {}
 
 function setToken(token: string): void {
     if (!token) {
@@ -60,7 +61,7 @@ export default function init(): void {
 
         Object.assign(
             CONFIG.JournalEntryPage.dataModels,
-            dataModelTypes.reduce<Record<string, unknown>>((config, type) => {
+            dataModelTypes.reduce<Record<string, typeof KankaPageModel>>((config, type) => {
                 config[type] = KankaPageModel;
                 return config;
             }, {}),
@@ -100,10 +101,10 @@ export default function init(): void {
         api.switchBaseUrl(game.settings?.get('kanka-foundry', 'baseUrl') ?? '');
         setToken(game.settings?.get('kanka-foundry', 'accessToken') ?? '');
 
-        // Expose EventTracker for macro access: game.modules.get('kanka-foundry').eventTracker.render(true)
-        const rawMod: unknown = game.modules?.get('kanka-foundry');
-        if (rawMod !== null && typeof rawMod === 'object') {
-            Reflect.set(rawMod, 'eventTracker', new EventTrackerApplication());
+        // The Event Tracker belongs to the wh40k-rpg system now (scene control or
+        // game.wh40k.EventTracker.open()); this module only syncs it with Kanka.
+        const rawMod = game.modules?.get('kanka-foundry');
+        if (rawMod !== undefined) {
             // Public API surface (macros + e2e): the item bridge, callable as
             // game.modules.get('kanka-foundry').api.bridgeKankaItem(entity, campaignId).
             // syncTokenImage is exposed for macros + the token-frame e2e.

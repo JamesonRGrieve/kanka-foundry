@@ -1,16 +1,14 @@
 import api from '../../api';
 import AccessToken from '../../api/AccessToken';
 import ConflictResolverApplication from '../../apps/ConflictResolver/ConflictResolverApplication';
-import type EventTrackerApplication from '../../apps/EventTracker/EventTrackerApplication';
 import executeMigrations from '../../executeMigrations';
 import localization from '../../state/localization';
 import { logError } from '../../util/logger';
 import { reconcileCampaignDescriptionJournal } from '../campaignJournal';
 import { revalidateConflicts } from '../conflicts/resolveConflicts';
+import { startEventTrackerSync } from '../eventTrackerSync';
 import { showError } from '../notifications';
 import { reconcileAllActors } from '../syncBack';
-
-function assertType<T>(_value: unknown): asserts _value is T {}
 
 export default async function setup(): Promise<void> {
     try {
@@ -34,16 +32,13 @@ export default async function setup(): Promise<void> {
             }
         }
 
-        if (game.user?.isGM) {
+        if (game.user?.isGM === true) {
             await executeMigrations();
 
-            // Prefetch event tracker data so it opens instantly
-            const rawMod: unknown = game.modules?.get('kanka-foundry');
-            const trackerRaw: unknown = rawMod !== null && typeof rawMod === 'object' ? Reflect.get(rawMod, 'eventTracker') : undefined;
-            if (trackerRaw !== null && typeof trackerRaw === 'object') {
-                assertType<EventTrackerApplication>(trackerRaw);
-                trackerRaw.prefetch();
-            }
+            // Sync the wh40k-rpg Event Tracker with Kanka in the background: the
+            // pull is one request per NPC and must not hold up actor reconciliation.
+            // It logs its own failures and never rejects.
+            void startEventTrackerSync();
 
             // Reconcile all Kanka-linked actors (bidirectional field sync)
             await reconcileAllActors();
