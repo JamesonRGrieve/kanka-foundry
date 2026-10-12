@@ -452,6 +452,46 @@ function applyPinnedFrameToToken(token: Record<string, unknown>, frame: Record<s
     token['flags'] = flags;
 }
 
+/**
+ * Approach C — a character with NO `base_actor` (a vault pregen PC, whose stats
+ * arrive as Kanka characteristic/stat attributes): apply its `advancements` (skill
+ * ranks) over the Kanka-derived system and attach its `base_items` loadout (talents,
+ * powers, weapons, armour, gear) as lean stubs. Without this, both channels only
+ * ever applied on top of a compendium base, and there are no character-type bases,
+ * so a pregen arrived with characteristics but an empty sheet. Mutates `actorData`
+ * in place; returns the kit to embed, or null when the entity authors neither, so a
+ * hand-built PC is never touched.
+ */
+// eslint-disable-next-line no-restricted-syntax -- boundary: actorData is the Kanka→Foundry actor payload handed to Actor.create/Actor#update; Foundry's DataModel validates it on write
+async function applyCharacterOverrides(entity: KankaApiCharacter, actorData: Record<string, unknown>): Promise<LeanItemStub[] | null> {
+    const advancements = parseAdvancements(parseJsonAttribute(getStringAttribute(entity.attributes, 'advancements')));
+    const kit = await resolveInstanceItems(entity);
+    if (advancements.length === 0 && kit.length === 0) return null;
+    const kankaSystem = isPlainRecord(actorData['system']) ? actorData['system'] : {};
+    actorData['system'] = foundry.utils.mergeObject(kankaSystem, advancementsToSystemPatch(advancements, kankaSystem), { inplace: false });
+    actorData['items'] = kit;
+    return kit;
+}
+
+/**
+ * The kit stubs an existing actor does not yet carry, matched on the compendium
+ * join key. Re-importing a PC must only ADD missing kit: what the player gained or
+ * removed in play is Foundry's state, not Kanka's. Pure.
+ */
+export function missingKit(existingSources: ReadonlySet<string>, kit: readonly LeanItemStub[]): LeanItemStub[] {
+    return kit.filter((stub) => !existingSources.has(stub._stats.compendiumSource));
+}
+
+/** The compendium sources an actor's embedded items were created from. */
+function embeddedSources(actor: Actor): Set<string> {
+    const sources = new Set<string>();
+    for (const item of actor.items) {
+        const source = item._stats.compendiumSource;
+        if (typeof source === 'string') sources.add(source);
+    }
+    return sources;
+}
+
 /** Replace an actor's embedded items with the base actor's canonical kit. */
 async function replaceEmbeddedKit(actor: Actor, baseItems: object[]): Promise<void> {
     const ids = actor.items.map((i) => i.id).filter((id): id is string => typeof id === 'string');
@@ -465,7 +505,7 @@ async function replaceEmbeddedKit(actor: Actor, baseItems: object[]): Promise<vo
 
 /** A lean embedded-item stub: only name/type/img + the compendium join key. The
  * in-memory compendium join (compendium-hydrate.ts) fills the full body at load/render. */
-interface LeanItemStub {
+export interface LeanItemStub {
     name: string;
     type: string;
     img: string;
@@ -516,6 +556,7 @@ export async function createOrUpdateActor(
     const actorData = createActorData(entity, entityTags, campaignId, defaultActorType, pcTags, gameSystem);
     const tokenFrame = parseTokenFrame(getStringAttribute(entity.attributes, 'token_frame'));
     const baseItems = await applyBaseActor(entity, actorData);
+    const characterKit = baseItems === null ? await applyCharacterOverrides(entity, actorData) : null;
 
     if (existing) {
         if (baseItems !== null) {
@@ -547,6 +588,11 @@ export async function createOrUpdateActor(
             }
         }
         await existing.update(update);
+        if (characterKit !== null) {
+            const added = missingKit(embeddedSources(existing), characterKit);
+            // type-coverage:ignore-next-line -- same Item.CreateData framework boundary as replaceEmbeddedKit
+            if (added.length > 0) await existing.createEmbeddedDocuments('Item', added as Item.CreateData[]);
+        }
         // Foundry copies actor.img into prototypeToken.texture.src by default
         // on create, so an unforced token sync will bail (the current value
         // looks "user-set"). Force it on every import so the canonical Kanka
