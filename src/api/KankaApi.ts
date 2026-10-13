@@ -331,9 +331,9 @@ export default class KankaApi {
         return result.data;
     }
 
-    public async uploadEntityImage(campaignId: KankaApiId, entityId: KankaApiEntityId, imageBlob: Blob): Promise<void> {
+    public async uploadEntityImage(campaignId: KankaApiId, entityId: KankaApiEntityId, imageBlob: Blob, filename: string): Promise<void> {
         type Result = KankaApiResult<unknown>;
-        await this.#fetcher.uploadFile<Result>(`campaigns/${String(campaignId)}/entities/${String(entityId)}/image`, imageBlob, 'file');
+        await this.#fetcher.uploadFile<Result>(`campaigns/${String(campaignId)}/entities/${String(entityId)}/image`, imageBlob, 'file', filename);
     }
 
     public async getEntityAssets(

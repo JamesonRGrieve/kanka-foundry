@@ -7,6 +7,26 @@ function assertType<T>(_value: unknown): asserts _value is T {}
 
 const defaultLimit = 300;
 
+const errorBodyMaxLength = 500;
+
+/**
+ * Build an error carrying whatever Kanka said. HTTP/2 has no reason phrase, so
+ * `response.statusText` is empty and a status alone is undiagnosable — a 422
+ * from the upload endpoint is only actionable once its validation body is read.
+ */
+async function requestError(label: string, response: Response): Promise<Error> {
+    let body = '';
+    try {
+        body = (await response.text()).trim();
+    } catch {
+        // A body that cannot be read must not mask the status we already have.
+    }
+
+    const detail = body.length > errorBodyMaxLength ? `${body.slice(0, errorBodyMaxLength)}…` : body;
+    const reason = [response.statusText, detail].filter(Boolean).join(' — ');
+    return new Error(`${label}: ${reason || 'no details'} (${String(response.status)})`);
+}
+
 export default class KankaFetcher {
     #base: string;
     #token: AccessToken | undefined = undefined;
@@ -80,7 +100,7 @@ export default class KankaFetcher {
         }
 
         if (!response.ok) {
-            throw new Error(`Kanka request error: ${response.statusText} (${response.status})`);
+            throw await requestError('Kanka request error', response);
         }
 
         const json: unknown = await response.json();
@@ -104,7 +124,12 @@ export default class KankaFetcher {
         await this.request<unknown>(path, 'DELETE');
     }
 
-    public async uploadFile<T extends KankaApiResult<unknown>>(path: string, file: Blob, fieldName = 'image'): Promise<T> {
+    /**
+     * `filename` is required because Kanka validates the uploaded part by its
+     * extension: a `FormData` part built from a bare `Blob` is transmitted as
+     * `filename="blob"` with no extension, which the API rejects.
+     */
+    public async uploadFile<T extends KankaApiResult<unknown>>(path: string, file: Blob, fieldName: string, filename: string): Promise<T> {
         if (!this.#token) {
             throw new Error('Missing token in KankaFetcher');
         }
@@ -113,7 +138,7 @@ export default class KankaFetcher {
 
         const url = path.startsWith('http') ? path : `${this.#base}${path}`;
         const formData = new FormData();
-        formData.append(fieldName, file);
+        formData.append(fieldName, file, filename);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -130,7 +155,7 @@ export default class KankaFetcher {
         if (limitRemaining) this.#limiter.remaining = Number.parseInt(limitRemaining, 10);
 
         if (!response.ok) {
-            throw new Error(`Kanka upload error: ${response.statusText} (${response.status})`);
+            throw await requestError('Kanka upload error', response);
         }
 
         return response.json();

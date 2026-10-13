@@ -1,6 +1,7 @@
 import api from '../api';
 import type { KankaApiAttribute, KankaApiEntityId, KankaApiId, KankaApiModuleType } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
+import { portraitFilename, portraitUploadBlocker } from '../util/portraitUpload';
 import { type PlainObject, asRecord, readProp, readRecord, readString } from '../util/reflection';
 import { BIO_MAP, CHARACTERISTIC_REVERSE_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_REVERSE_MAP } from './actorAttributeMaps';
 import { addConflicts } from './conflicts/conflictStore';
@@ -468,13 +469,6 @@ function reconcileFields(actor: Actor, kankaAttrs: KankaApiAttribute[]): Reconci
 }
 
 /**
- * Check if a Foundry image path is a local path (not an external URL).
- */
-function isLocalImage(img: string): boolean {
-    return !img.startsWith('http://') && !img.startsWith('https://');
-}
-
-/**
  * Reconcile the image between Foundry and Kanka. Kanka is the single image host:
  * a Kanka portrait is HOTLINKED onto actor.img (its image_full URL) — never
  * downloaded into the Foundry data dir. If only Foundry holds a local image, it
@@ -494,24 +488,31 @@ async function reconcileImage(actor: Actor, campaignId: KankaApiId, kankaEntityI
 
     const kankaHasImage = kankaEntity.child?.has_custom_image === true;
     const kankaImageUrl = kankaEntity.child?.image_full;
-    const foundryImg = actor.img;
+    const foundryImg: string | null = actor.img;
 
     // Kanka is the single source of truth for portraits.
     // Use the Kanka URL directly — no local downloads.
     if (kankaHasImage && kankaImageUrl && foundryImg !== kankaImageUrl) {
         await actor.update({ img: kankaImageUrl });
         logInfo(`Portrait: Kanka → Foundry for ${actor.name}`);
-    } else if (!kankaHasImage && foundryImg && isLocalImage(foundryImg)) {
-        // Foundry has a local image but Kanka doesn't — push to Kanka
-        try {
-            const response = await fetch(foundryImg);
-            if (response.ok) {
-                const blob = await response.blob();
-                await api.uploadEntityImage(campaignId, kankaEntityId, blob);
-                logInfo(`Portrait: Foundry → Kanka for ${actor.name}`);
+    } else if (!kankaHasImage && foundryImg !== null && foundryImg !== '') {
+        // Kanka has no portrait — push Foundry's up, provided it is one Kanka
+        // can host. The placeholder every actor is created with, and Foundry's
+        // SVG core icons, are not portraits and only earn an opaque 422.
+        const blocker = portraitUploadBlocker(foundryImg);
+        if (blocker !== null) {
+            logInfo(`Portrait: not uploading ${actor.name} to Kanka — ${blocker}`);
+        } else {
+            try {
+                const response = await fetch(foundryImg);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    await api.uploadEntityImage(campaignId, kankaEntityId, blob, portraitFilename(foundryImg));
+                    logInfo(`Portrait: Foundry → Kanka for ${actor.name}`);
+                }
+            } catch (error) {
+                logError(`Failed to upload image to Kanka for ${actor.name}`, error);
             }
-        } catch (error) {
-            logError(`Failed to upload image to Kanka for ${actor.name}`, error);
         }
     }
 
