@@ -1,6 +1,7 @@
 import api from '../api';
 import type { KankaApiEntityId, KankaApiId } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
+import { DEFAULT_ACTOR_PORTRAIT } from '../util/portraitUpload';
 function assertType<T>(_value: unknown): asserts _value is T {}
 
 interface ProtoToken {
@@ -11,6 +12,10 @@ interface ProtoToken {
 /** Dotted-path Foundry update payload — values are heterogeneous by design. */
 // eslint-disable-next-line no-restricted-syntax -- boundary: Foundry Document#update accepts arbitrary dotted-path values
 type TokenPatch = Record<string, unknown>;
+
+/** Ring subject scale that seats the generated circular bust inside the band,
+ * matching player-character tokens. Applied on a fresh draw (not animation-only). */
+const DEFAULT_RING_SUBJECT_SCALE = 0.8;
 
 /**
  * Prototype-token sync — two regimes (see buildTokenPatch):
@@ -75,10 +80,11 @@ function findPlayerRingDefaults(): TokenPatch | null {
  *    Kanka `token.png` asset is involved, and the legacy
  *    `ring.subject.texture` mirror is CLEARED — Foundry V13+ renders that
  *    field instead of texture.src when set, which would bypass the runtime
- *    mask entirely. Mirrored `ring.subject.scale` defaults are dropped too:
- *    core applies that field only through the token animation path, so it
- *    never works on a fresh draw — band padding comes from the generated
- *    bust instead.
+ *    mask entirely. `ring.subject.scale` IS set — to the party's mirrored value
+ *    when a player-character token provides one, else DEFAULT_RING_SUBJECT_SCALE
+ *    — because it shrinks the generated bust so it seats inside the ring band on
+ *    a fresh draw (the earlier belief that this field was animation-path-only was
+ *    wrong: player-character tokens render correctly with it applied).
  *  - any other system (legacy): the pre-framed circular Kanka asset (or the
  *    portrait as fallback) goes into both texture slots, as before.
  */
@@ -101,13 +107,18 @@ export function buildTokenPatch(input: {
     const npcNameplate = typeof input.actorType === 'string' && input.actorType.endsWith('-npc') ? { 'prototypeToken.displayName': 0 } : {};
     if (input.systemId === 'wh40k-rpg') {
         const portrait = input.portrait;
-        if (portrait === undefined || portrait === null || portrait === '' || portrait === 'icons/svg/mystery-man.svg') return null;
+        if (portrait === undefined || portrait === null || portrait === '' || portrait === DEFAULT_ACTOR_PORTRAIT) return null;
+        // Seat the generated bust inside the ring band: mirror the party's subject
+        // scale when a player-character token provides one, else the shared default.
+        const mirroredScale = input.ringDefaults['prototypeToken.ring.subject.scale'];
+        const subjectScale = typeof mirroredScale === 'number' ? mirroredScale : DEFAULT_RING_SUBJECT_SCALE;
         const ringDefaults = Object.fromEntries(Object.entries(input.ringDefaults).filter(([k]) => k !== 'prototypeToken.ring.subject.scale'));
         return {
             'prototypeToken.texture.src': portrait,
             'prototypeToken.sight.enabled': true,
             'prototypeToken.ring.enabled': true,
             'prototypeToken.ring.subject.texture': null,
+            'prototypeToken.ring.subject.scale': subjectScale,
             // Vault-provided frame wins (it overrides the generic default even when a
             // prior {} is already present); else keep an existing GM-tuned frame; else
             // stamp the bare default so the system still masks a circular bust.
@@ -121,7 +132,7 @@ export function buildTokenPatch(input: {
         };
     }
     const tokenSource = input.kankaTokenUrl ?? input.portrait;
-    if (tokenSource === undefined || tokenSource === null || tokenSource === '' || tokenSource === 'icons/svg/mystery-man.svg') return null;
+    if (tokenSource === undefined || tokenSource === null || tokenSource === '' || tokenSource === DEFAULT_ACTOR_PORTRAIT) return null;
     return {
         'prototypeToken.texture.src': tokenSource,
         'prototypeToken.sight.enabled': true,
@@ -203,7 +214,7 @@ export async function syncTokenImage(
     }
 
     const currentToken = proto?.texture?.src;
-    const isDefault = currentToken === undefined || currentToken === '' || currentToken === 'icons/svg/mystery-man.svg';
+    const isDefault = currentToken === undefined || currentToken === '' || currentToken === DEFAULT_ACTOR_PORTRAIT;
 
     if (!force && !isDefault && !wasTokenAutoSet(actor)) return;
 

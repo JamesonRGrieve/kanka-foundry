@@ -30,13 +30,19 @@ describe('buildTokenPatch (wh40k-rpg runtime mask)', () => {
         expect(patch).not.toHaveProperty(['prototypeToken.flags.wh40k-rpg.tokenFrame']);
     });
 
-    it('drops mirrored ring.subject.scale defaults (animation-path-only field)', () => {
+    it('mirrors the party ring.subject.scale so the bust seats inside the band', () => {
         const patch = buildTokenPatch({
             ...base,
-            ringDefaults: { 'prototypeToken.ring.colors.ring': '#ff0000', 'prototypeToken.ring.subject.scale': 0.8 },
+            ringDefaults: { 'prototypeToken.ring.colors.ring': '#ff0000', 'prototypeToken.ring.subject.scale': 0.7 },
         });
-        expect(patch).toMatchObject({ 'prototypeToken.ring.colors.ring': '#ff0000' });
-        expect(patch).not.toHaveProperty(['prototypeToken.ring.subject.scale']);
+        expect(patch).toMatchObject({
+            'prototypeToken.ring.colors.ring': '#ff0000',
+            'prototypeToken.ring.subject.scale': 0.7,
+        });
+    });
+
+    it('defaults ring.subject.scale to 0.8 when no party token provides one', () => {
+        expect(buildTokenPatch(base)).toMatchObject({ 'prototypeToken.ring.subject.scale': 0.8 });
     });
 
     it('hides NPC nameplates but leaves PCs alone', () => {
