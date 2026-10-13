@@ -17,9 +17,9 @@ import { importKankaMapToNewScene, type KankaMapSceneInput } from './sceneFactor
 
 const FLAG_SCOPE = 'kanka-foundry';
 /** Flag on the vehicle Actor pointing at its interior Scene (read by the wh40k-rpg system). */
-export const INTERIOR_SCENE_FLAG = 'interiorSceneId';
+const INTERIOR_SCENE_FLAG = 'interiorSceneId';
 /** Reverse flag on the interior Scene pointing back at its vehicle Actor. */
-export const VEHICLE_ACTOR_FLAG = 'vehicleActorId';
+const VEHICLE_ACTOR_FLAG = 'vehicleActorId';
 /** Fallback Scene canvas size when the Kanka map omits pixel dimensions. */
 const DEFAULT_MAP_DIMENSION = 2000;
 

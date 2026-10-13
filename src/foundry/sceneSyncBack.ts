@@ -183,14 +183,14 @@ function markersPath(campaignId: KankaApiId, mapId: KankaApiId): string {
     return `campaigns/${String(campaignId)}/maps/${String(mapId)}/map_markers`;
 }
 
-export async function createMapMarker(campaignId: KankaApiId, mapId: KankaApiId, payload: MarkerWritePayload): Promise<KankaApiMapMarker | undefined> {
+async function createMapMarker(campaignId: KankaApiId, mapId: KankaApiId, payload: MarkerWritePayload): Promise<KankaApiMapMarker | undefined> {
     const fetcher = markerFetcher();
     if (!fetcher) return undefined;
     const result = await fetcher.post<KankaApiResult<KankaApiMapMarker>>(markersPath(campaignId, mapId), payload);
     return result.data;
 }
 
-export async function updateMapMarker(
+async function updateMapMarker(
     campaignId: KankaApiId,
     mapId: KankaApiId,
     markerId: KankaApiId,
@@ -202,13 +202,13 @@ export async function updateMapMarker(
     return result.data;
 }
 
-export async function deleteMapMarker(campaignId: KankaApiId, mapId: KankaApiId, markerId: KankaApiId): Promise<void> {
+async function deleteMapMarker(campaignId: KankaApiId, mapId: KankaApiId, markerId: KankaApiId): Promise<void> {
     const fetcher = markerFetcher();
     if (!fetcher) return;
     await fetcher.delete(`${markersPath(campaignId, mapId)}/${String(markerId)}`);
 }
 
-export async function updateMap(campaignId: KankaApiId, mapId: KankaApiId, data: { name: string }): Promise<void> {
+async function updateMap(campaignId: KankaApiId, mapId: KankaApiId, data: { name: string }): Promise<void> {
     const fetcher = markerFetcher();
     if (!fetcher) return;
     await fetcher.patch<KankaApiResult<unknown>>(`campaigns/${String(campaignId)}/maps/${String(mapId)}`, data);
@@ -452,7 +452,7 @@ function noteChangeIsRelevant(changes: unknown): boolean {
 }
 
 /** Push a Scene rename to the Kanka map name (conflict-guarded via a stored baseline). */
-export async function reconcileSceneName(scene: unknown): Promise<void> {
+async function reconcileSceneName(scene: unknown): Promise<void> {
     if (!syncEnabled()) return;
     const mapId = readMapId(scene);
     if (mapId === undefined) return;

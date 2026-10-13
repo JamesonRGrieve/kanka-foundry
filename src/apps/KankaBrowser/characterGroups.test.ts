@@ -1,18 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { KankaApiCharacter, KankaApiCharacterOrganisationLink } from '../../types/kanka';
+import type { KankaApiCharacter } from '../../types/kanka';
+import { createKankaCharacter, createKankaOrganisationLink } from '../../types/kanka.fixtures';
 import { buildCharacterGroups, sortByGroup } from './characterGroups';
 
-/** Cast a partial to its full shape — test mocks populate only the fields under test. */
-function mock<T>(partial: Partial<T>): T {
-    return partial as T;
-}
-
-function orgLink(organisationId: number): KankaApiCharacterOrganisationLink {
-    return mock<KankaApiCharacterOrganisationLink>({ organisation_id: organisationId });
-}
+const orgLink = createKankaOrganisationLink;
 
 function character(over: Partial<KankaApiCharacter>): KankaApiCharacter {
-    return mock<KankaApiCharacter>({ id: 1, name: 'Someone', organisations: { data: [] }, ...over });
+    return createKankaCharacter(over);
 }
 
 describe('buildCharacterGroups', () => {

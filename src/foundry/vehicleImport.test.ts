@@ -1,22 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import type { KankaApiAttribute, KankaApiChildEntity, KankaApiMap, KankaApiMapMarker } from '../types/kanka';
+import { createKankaMap } from '../types/kanka.fixtures';
 import { buildInteriorSceneInput, findInteriorMap, isVehicleEntity } from './vehicleImport';
 
-/** Cast a partial to its full shape — test mocks populate only the fields under test. */
-function mock<T>(partial: Partial<T>): T {
-    return partial as T;
-}
-
 function attr(name: string, value: string): KankaApiAttribute {
-    return mock<KankaApiAttribute>({ name, value });
+    return { id: 1, name, value, parsed: value, type: null, is_star: false, is_private: false, default_order: 0 };
 }
 
 function entity(attributes: KankaApiAttribute[]): KankaApiChildEntity {
-    return mock<KankaApiChildEntity>({ id: 1, entity_id: 100, name: 'The Errant Vector', attributes });
+    return {
+        id: 1,
+        entity_id: 100,
+        name: 'The Errant Vector',
+        entry: '',
+        entry_parsed: '',
+        urls: { view: '', api: '' },
+        attributes,
+        relations: [],
+        inventory: [],
+        posts: [],
+        entity_abilities: [],
+        reminders: [],
+        entity_assets: [],
+        is_private: false,
+        created_at: '',
+        created_by: 0,
+        updated_at: '',
+        updated_by: 0,
+    };
 }
 
-function map(over: Partial<KankaApiMap>): KankaApiMap {
-    return mock<KankaApiMap>({ id: 5, name: 'Interior', location_id: 1, is_real: true, image_full: 'https://k/img.png', ...over });
+function map(over: Partial<KankaApiMap> = {}): KankaApiMap {
+    return createKankaMap({ id: 5, name: 'Interior', location_id: 1, is_real: true, image_full: 'https://k/img.png', ...over });
+}
+
+/** A map whose art has not been uploaded yet — `image_full` is absent, not empty. */
+function mapWithoutImage(locationId: number): KankaApiMap {
+    const { image_full: _omitted, ...rest } = map({ location_id: locationId });
+    return rest;
 }
 
 describe('isVehicleEntity', () => {
@@ -39,7 +60,7 @@ describe('findInteriorMap', () => {
     });
     it('ignores maps with no image (exterior placeholder / pending art)', () => {
         expect(findInteriorMap([map({ location_id: 1, image_full: '' })], 1)).toBeUndefined();
-        expect(findInteriorMap([map({ location_id: 1, image_full: undefined })], 1)).toBeUndefined();
+        expect(findInteriorMap([mapWithoutImage(1)], 1)).toBeUndefined();
     });
 });
 
@@ -57,7 +78,7 @@ describe('buildInteriorSceneInput', () => {
     });
 
     it('falls back to a default canvas size when the map omits dimensions', () => {
-        const input = buildInteriorSceneInput('The Errant Vector', 100, map({ width: undefined, height: undefined }), markers);
+        const input = buildInteriorSceneInput('The Errant Vector', 100, map(), markers);
         expect(input.width).toBe(2000);
         expect(input.height).toBe(2000);
     });

@@ -25,7 +25,7 @@ export function entityHasMap(maps: readonly KankaApiMap[], entity: Pick<KankaApi
  * browser — Kanka marker coordinates live in this pixel space, so the Scene
  * canvas must match it exactly.
  */
-export function loadImageDimensions(url: string): Promise<{ width: number; height: number }> {
+function loadImageDimensions(url: string): Promise<{ width: number; height: number }> {
     return new Promise((resolve, reject) => {
         const image = new Image();
         image.addEventListener('load', () => resolve({ width: image.naturalWidth, height: image.naturalHeight }));
@@ -39,7 +39,7 @@ export function loadImageDimensions(url: string): Promise<{ width: number; heigh
  * pixel size (authoritative — markers are placed in it), falling back to the
  * dimensions Kanka stores on the map when the image can't be loaded.
  */
-export async function resolveMapDimensions(map: KankaApiMap): Promise<{ width: number; height: number }> {
+async function resolveMapDimensions(map: KankaApiMap): Promise<{ width: number; height: number }> {
     if (typeof map.image_full === 'string' && map.image_full.length > 0) {
         try {
             return await loadImageDimensions(map.image_full);
