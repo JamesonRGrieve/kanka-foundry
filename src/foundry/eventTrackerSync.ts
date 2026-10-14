@@ -43,7 +43,7 @@ export const ATTITUDE_SAVE_DEBOUNCE_MS = 1500;
 const ATTITUDE_ATTRIBUTE_PREFIX = 'attitude_';
 
 /** Who made a core Event Tracker change (mirrors the system's `ChangeOrigin`). */
-export type ChangeOrigin = 'manual' | 'sync' | 'auto';
+type ChangeOrigin = 'manual' | 'sync' | 'auto';
 
 /** The final argument of every core Event Tracker hook. */
 export interface ChangeContext {
@@ -61,7 +61,7 @@ export type CampaignDayChangedHook = (day: number, context: ChangeContext) => vo
 export type PcAttitudeChangedHook = (npc: string, pc: string, attitude: string, context: ChangeContext) => void;
 
 /** What a tracker reference names (mirrors the system's `JournalRefKind`). */
-export type JournalRefKind = 'character' | 'location' | 'event-source' | 'quest' | 'item';
+type JournalRefKind = 'character' | 'location' | 'event-source' | 'quest' | 'item';
 
 /** A named reference the core dashboard wants linked to its journal. */
 export interface JournalRef {
@@ -111,7 +111,7 @@ export interface KankaSyncApi {
 }
 
 /** The Kanka quest/timeline element that carries one event. */
-export interface EventElementRef {
+interface EventElementRef {
     readonly type: 'quest' | 'timeline';
     readonly parentId: KankaApiId;
     readonly element: KankaApiQuestElement | KankaApiTimelineElement;
