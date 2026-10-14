@@ -156,7 +156,7 @@ export default class PageFactory {
         return this.createPage('overview', 'KANKA.journal.shared.pages.story', this.entity, undefined, { show: false });
     }
 
-    private createPostPage(name: string, content: string | null | undefined, isSecret: boolean) {
+    private createPostPage(name: string, content: string | null | undefined, isSecret: boolean, showTitle = true) {
         if (!content) {
             return null;
         }
@@ -166,7 +166,7 @@ export default class PageFactory {
             name,
             this.entity,
             { publicCount: isSecret ? 0 : 1 },
-            { show: true, level: 2 },
+            { show: showTitle, level: 2 },
             { text: { content } },
             'kanka-foundry.PostPageSheet',
         );
@@ -180,7 +180,9 @@ export default class PageFactory {
 
         return [
             ...prePosts.map((note) => this.createPostPage(note.name, note.entry_parsed, isSecret(note))),
-            this.createPostPage('KANKA.journal.shared.pages.entry', this.entity.entry_parsed, false),
+            // The entry is the entity's own text under the entry header, which already names it;
+            // an "Entry" page heading only stacks an empty label on the text's first section.
+            this.createPostPage('KANKA.journal.shared.pages.entry', this.entity.entry_parsed, false, false),
             ...postPosts.map((note) => this.createPostPage(note.name, note.entry_parsed, isSecret(note))),
         ];
     }
