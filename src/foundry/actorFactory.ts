@@ -240,13 +240,11 @@ function readByPath(root: unknown, path: string): unknown {
  * This stops a sync from silently clobbering a built/advanced PC — or
  * re-stamping origin grants — when Kanka holds stale numbers.
  */
-function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unknown>): { update: Record<string, unknown>; conflicts: ImportFieldConflict[] } {
-    const systemRaw = actorData['system'];
-    const system: Record<string, unknown> = isPlainRecord(systemRaw) ? systemRaw : {};
-    // actor.system is loosely typed at the Foundry boundary — narrow via guard
-    const currentRaw: unknown = Reflect.get(existing, 'system');
-    const currentSystem: Record<string, unknown> = isPlainRecord(currentRaw) ? currentRaw : {};
-
+/**
+ * The part of an actor update that is always safe to re-assert: name, flags, the
+ * portrait when Kanka supplies one, and the Kanka-owned narrative system keys.
+ */
+export function identityUpdate(actorData: Record<string, unknown>): Record<string, unknown> {
     const update: Record<string, unknown> = {
         name: actorData['name'],
         flags: actorData['flags'],
@@ -257,13 +255,26 @@ function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unk
     // the current image unless Kanka has a real one to replace it with.
     const incomingImg = actorData['img'];
     if (isNonEmptyString(incomingImg)) update['img'] = incomingImg;
+    const systemRaw = actorData['system'];
+    const system: Record<string, unknown> = isPlainRecord(systemRaw) ? systemRaw : {};
+    for (const [topKey, value] of Object.entries(system)) {
+        if (NARRATIVE_SYSTEM_KEYS.has(topKey)) update[`system.${topKey}`] = value;
+    }
+    return update;
+}
+
+function buildConflictAwareUpdate(existing: Actor, actorData: Record<string, unknown>): { update: Record<string, unknown>; conflicts: ImportFieldConflict[] } {
+    const systemRaw = actorData['system'];
+    const system: Record<string, unknown> = isPlainRecord(systemRaw) ? systemRaw : {};
+    // actor.system is loosely typed at the Foundry boundary — narrow via guard
+    const currentRaw: unknown = Reflect.get(existing, 'system');
+    const currentSystem: Record<string, unknown> = isPlainRecord(currentRaw) ? currentRaw : {};
+
+    const update = identityUpdate(actorData);
     const conflicts: ImportFieldConflict[] = [];
 
     for (const [topKey, value] of Object.entries(system)) {
-        if (NARRATIVE_SYSTEM_KEYS.has(topKey)) {
-            update[`system.${topKey}`] = value;
-            continue;
-        }
+        if (NARRATIVE_SYSTEM_KEYS.has(topKey)) continue;
         const leaves = isPlainRecord(value) ? flattenLeaves(value, topKey) : { [topKey]: value };
         for (const [path, incoming] of Object.entries(leaves)) {
             const current = readByPath(currentSystem, path);
@@ -473,34 +484,53 @@ async function applyCharacterOverrides(entity: KankaApiCharacter, actorData: Rec
     return kit;
 }
 
+/** An embedded item as the add-only kit merge sees it. */
+export interface KitItemRef {
+    name: string;
+    type: string;
+    source: string | undefined;
+}
+
+/** A base-kit entry's match identity: its compendium join key (when it has one), name and type. */
+function kitRef(item: object): KitItemRef {
+    const rec: Record<string, unknown> = isPlainRecord(item) ? item : {};
+    const stats = isPlainRecord(rec['_stats']) ? rec['_stats'] : {};
+    const source = stats['compendiumSource'];
+    return {
+        name: typeof rec['name'] === 'string' ? rec['name'] : '',
+        type: typeof rec['type'] === 'string' ? rec['type'] : '',
+        source: typeof source === 'string' ? source : undefined,
+    };
+}
+
 /**
- * The kit stubs an existing actor does not yet carry, matched on the compendium
- * join key. Re-importing a PC must only ADD missing kit: what the player gained or
- * removed in play is Foundry's state, not Kanka's. Pure.
+ * The base-kit entries an existing actor does not carry. Each kit entry claims one
+ * unclaimed embedded item: by compendium join key when the entry has one, else by
+ * type + name (an unlinked base item such as a Basic Melee Attack). Count-aware, so a
+ * kit with two grenades grants two, and an actor that already holds them gets none.
+ * Nothing the actor carries is ever removed: kit gained or lost in play is Foundry's
+ * state, not the base actor's. Pure.
  */
-export function missingKit(existingSources: ReadonlySet<string>, kit: readonly LeanItemStub[]): LeanItemStub[] {
-    return kit.filter((stub) => !existingSources.has(stub._stats.compendiumSource));
+export function missingBaseKit<T extends object>(existing: readonly KitItemRef[], kit: readonly T[]): T[] {
+    const unclaimed = [...existing];
+    return kit.filter((item) => {
+        const want = kitRef(item);
+        const i = unclaimed.findIndex((have) =>
+            want.source !== undefined ? have.source === want.source : have.type === want.type && have.name === want.name,
+        );
+        if (i === -1) return true;
+        unclaimed.splice(i, 1);
+        return false;
+    });
 }
 
-/** The compendium sources an actor's embedded items were created from. */
-function embeddedSources(actor: Actor): Set<string> {
-    const sources = new Set<string>();
-    for (const item of actor.items) {
-        const source = item._stats.compendiumSource;
-        if (typeof source === 'string') sources.add(source);
-    }
-    return sources;
-}
-
-/** Replace an actor's embedded items with the base actor's canonical kit. */
-async function replaceEmbeddedKit(actor: Actor, baseItems: object[]): Promise<void> {
-    const ids = actor.items.map((i) => i.id).filter((id): id is string => typeof id === 'string');
-    if (ids.length > 0) await actor.deleteEmbeddedDocuments('Item', ids);
-    // Item.CreateData is any-tainted in fvtt-types, so type-coverage counts the assertion; it is
-    // a genuine framework boundary — the dynamically-cloned item source (type/name/system from
-    // base.toObject().items + resolveInstanceItems stubs) is validated by Foundry on create.
-    // type-coverage:ignore-next-line
-    if (baseItems.length > 0) await actor.createEmbeddedDocuments('Item', baseItems as Item.CreateData[]);
+/** An actor's embedded items as kit refs. */
+function embeddedKitRefs(actor: Actor): KitItemRef[] {
+    return actor.items.map((item) => ({
+        name: item.name ?? '',
+        type: item.type,
+        source: typeof item._stats.compendiumSource === 'string' ? item._stats.compendiumSource : undefined,
+    }));
 }
 
 /** A lean embedded-item stub: only name/type/img + the compendium join key. The
@@ -560,19 +590,13 @@ export async function createOrUpdateActor(
 
     if (existing) {
         if (baseItems !== null) {
-            // Base actor is the source of truth (base + advancements). Apply the merged
-            // system directly rather than conflict-refusing it against the 30/30 default.
-            const img = actorData['img'];
-            // eslint-disable-next-line no-restricted-syntax -- boundary: Actor#update payload; values originate from createActorData's Record and are validated by Foundry's DataModel on write
-            const baseUpdate: Record<string, unknown> = {
-                name: actorData['name'],
-                system: actorData['system'],
-                flags: actorData['flags'],
-                prototypeToken: actorData['prototypeToken'],
-            };
-            if (isNonEmptyString(img)) baseUpdate['img'] = img;
-            await existing.update(baseUpdate);
-            await replaceEmbeddedKit(existing, baseItems);
+            // An existing NPC's system and kit are play state (wounds, ammo, kit taken or
+            // lost), so a refresh never replaces them: it re-asserts identity and narrative
+            // only, and adds the base kit the actor does not yet carry.
+            await existing.update(identityUpdate(actorData));
+            const added = missingBaseKit(embeddedKitRefs(existing), baseItems);
+            // type-coverage:ignore-next-line -- Item.CreateData framework boundary: the base kit is base.toObject().items + lean stubs, validated by Foundry on create
+            if (added.length > 0) await existing.createEmbeddedDocuments('Item', added as Item.CreateData[]);
             await syncTokenImage(existing, campaignId, entity.entity_id, true, tokenFrame);
             return existing;
         }
@@ -589,8 +613,8 @@ export async function createOrUpdateActor(
         }
         await existing.update(update);
         if (characterKit !== null) {
-            const added = missingKit(embeddedSources(existing), characterKit);
-            // type-coverage:ignore-next-line -- same Item.CreateData framework boundary as replaceEmbeddedKit
+            const added = missingBaseKit(embeddedKitRefs(existing), characterKit);
+            // type-coverage:ignore-next-line -- same Item.CreateData framework boundary as the base-kit merge above
             if (added.length > 0) await existing.createEmbeddedDocuments('Item', added as Item.CreateData[]);
         }
         // Foundry copies actor.img into prototypeToken.texture.src by default
