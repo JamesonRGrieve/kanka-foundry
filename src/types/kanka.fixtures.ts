@@ -12,7 +12,15 @@
  * the interface fails the build here rather than silently in production.
  */
 
-import type { KankaApiCharacter, KankaApiCharacterOrganisationLink, KankaApiChildEntity, KankaApiEntityId, KankaApiId, KankaApiMap } from './kanka';
+import {
+    type KankaApiCharacter,
+    type KankaApiCharacterOrganisationLink,
+    type KankaApiChildEntity,
+    type KankaApiEntityId,
+    type KankaApiId,
+    type KankaApiMap,
+    KankaVisibility,
+} from './kanka';
 
 /** The blame/visibility/relation envelope every child entity carries. */
 function childEntityBase(id: KankaApiId, entityId: KankaApiEntityId, name: string): KankaApiChildEntity {
@@ -35,6 +43,27 @@ function childEntityBase(id: KankaApiId, entityId: KankaApiEntityId, name: strin
         created_by: 0,
         updated_at: '',
         updated_by: 0,
+    };
+}
+
+export function createKankaChildEntity(overrides: Partial<KankaApiChildEntity> = {}): KankaApiChildEntity {
+    return { ...childEntityBase(30, 300, 'Somewhere'), ...overrides };
+}
+
+type KankaApiEntityPost = KankaApiChildEntity['posts'][number];
+
+export function createKankaPost(overrides: Partial<KankaApiEntityPost> = {}): KankaApiEntityPost {
+    return {
+        id: 1,
+        entity_id: 300,
+        entry: '',
+        entry_parsed: '',
+        is_private: false,
+        name: 'Post',
+        position: null,
+        settings: null,
+        visibility_id: KankaVisibility.all,
+        ...overrides,
     };
 }
 
