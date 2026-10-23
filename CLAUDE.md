@@ -101,8 +101,8 @@ make a regression pass — fix the source.
 | `i18n:check` | `en.yml` (reference langpack) parses; de/it/pt_BR drift is warn-only (Weblate-managed) | hard gate on en.yml only | — |
 
 All of the above run in `.husky/pre-commit` (after `lint-staged`), followed by
-`pnpm test`. Do not `--no-verify` past a failing gate without explicit
-authorization. `theme`/`animation` are guards, not migration trackers — kanka
+`pnpm test`. `--no-verify` only under the batch-work rule (SOP → *Git and
+Commits*). `theme`/`animation` are guards, not migration trackers — kanka
 has no per-system Tailwind variant architecture, so they simply block
 introducing the anti-pattern.
 
