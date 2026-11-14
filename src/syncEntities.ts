@@ -136,7 +136,7 @@ export async function updateEntity(entry: JournalEntry, entityLookup?: KankaApiE
     const campaignId = entry.getFlag('kanka-foundry', 'campaign');
     const snapshot = entry.getFlag('kanka-foundry', 'snapshot');
 
-    if (!type || !campaignId || !snapshot) throw new Error('Missing flags on journal entry');
+    if (!type || !campaignId || snapshot?.id === undefined) throw new Error('Missing flags on journal entry');
 
     const loader = loaders.get(type);
     if (!loader) throw new Error(`Missing loader for type ${String(type)}`);

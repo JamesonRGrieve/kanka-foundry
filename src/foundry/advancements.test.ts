@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { advancementsToSystemPatch, parseAdvancements, specialisationSlug } from './advancements';
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 /** A hybrid base: the five skills the Third Gen Genestealer Hybrid actually has. */
 const hybridBase = {
     characteristics: {
@@ -95,7 +97,9 @@ describe('advancementsToSystemPatch', () => {
             ],
             hybridBase,
         );
-        const entries = (patch['skills'] as { commonLore: { entries: Array<{ name: string }> } }).commonLore.entries;
+        const skillsEntries: unknown = patch['skills'];
+        assertType<{ commonLore: { entries: Array<{ name: string }> } }>(skillsEntries);
+        const entries = skillsEntries.commonLore.entries;
         expect(entries.map((e) => e.name)).toEqual(['Imperium', 'War']);
     });
 
@@ -106,7 +110,9 @@ describe('advancementsToSystemPatch', () => {
             skills: { commonLore: { advance: 0, entries: [{ name: 'Underworld', slug: 'underworld', advance: 2, bonus: 0, cost: 0 }] } },
         };
         const patch = advancementsToSystemPatch([{ type: 'skill', skill: 'commonLore', specialisation: 'Imperium', advance: 1 }], base);
-        const entries = (patch['skills'] as { commonLore: { entries: Array<{ name: string; advance: number }> } }).commonLore.entries;
+        const skillsEntries: unknown = patch['skills'];
+        assertType<{ commonLore: { entries: Array<{ name: string; advance: number }> } }>(skillsEntries);
+        const entries = skillsEntries.commonLore.entries;
         expect(entries.map((e) => e.name)).toEqual(['Underworld', 'Imperium']);
         expect(entries[0]?.advance).toBe(2);
     });
@@ -119,7 +125,9 @@ describe('advancementsToSystemPatch', () => {
             skills: { commonLore: { advance: 0, entries: [{ name: 'Imperium', slug: 'imperium', advance: 1, bonus: 0, cost: 0 }] } },
         };
         const patch = advancementsToSystemPatch([{ type: 'skill', skill: 'commonLore', specialisation: 'Imperium', advance: 3 }], base);
-        const entries = (patch['skills'] as { commonLore: { entries: Array<{ advance: number }> } }).commonLore.entries;
+        const skillsEntries: unknown = patch['skills'];
+        assertType<{ commonLore: { entries: Array<{ advance: number }> } }>(skillsEntries);
+        const entries = skillsEntries.commonLore.entries;
         expect(entries).toHaveLength(1);
         expect(entries[0]?.advance).toBe(3);
     });
@@ -130,7 +138,9 @@ describe('advancementsToSystemPatch', () => {
             skills: { commonLore: { advance: 0, entries: [{ name: 'Imperium', slug: 'imperium', advance: 4, bonus: 0, cost: 0 }] } },
         };
         const patch = advancementsToSystemPatch([{ type: 'skill', skill: 'commonLore', specialisation: 'Imperium', advance: 1 }], base);
-        const entries = (patch['skills'] as { commonLore: { entries: Array<{ advance: number }> } }).commonLore.entries;
+        const skillsEntries: unknown = patch['skills'];
+        assertType<{ commonLore: { entries: Array<{ advance: number }> } }>(skillsEntries);
+        const entries = skillsEntries.commonLore.entries;
         expect(entries[0]?.advance).toBe(4);
     });
 

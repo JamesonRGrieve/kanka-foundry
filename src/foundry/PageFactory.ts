@@ -6,6 +6,7 @@ import groupBy from '../util/groupBy';
 import isSecret from '../util/isSecret';
 import { hasChildren, isCharacter, isFamily, isOrganisation, isQuest } from '../util/kankaTypeGuards';
 import unzip from '../util/unzip';
+import { overviewSnapshot } from './snapshotFields';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
 
@@ -153,7 +154,7 @@ export default class PageFactory {
     }
 
     createOverviewPage(): JournalEntryPage.CreateData | null {
-        return this.createPage('overview', 'KANKA.journal.shared.pages.story', this.entity, undefined, { show: false });
+        return this.createPage('overview', 'KANKA.journal.shared.pages.story', overviewSnapshot(this.entity), undefined, { show: false });
     }
 
     private createPostPage(name: string, content: string | null | undefined, isSecret: boolean, showTitle = true) {
@@ -161,10 +162,11 @@ export default class PageFactory {
             return null;
         }
 
+        // The post's content is the page's own text; its sheet reads no snapshot (wh40k-rpg#739).
         return this.createPage(
             'post',
             name,
-            this.entity,
+            {},
             { publicCount: isSecret ? 0 : 1 },
             { show: showTitle, level: 2 },
             { text: { content } },

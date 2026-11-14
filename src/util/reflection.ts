@@ -30,6 +30,12 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Narrow to an array without `Array.isArray`'s `any[]` widening. */
+// eslint-disable-next-line no-restricted-syntax -- boundary: type-guard parameter fed straight into the guard below
+export function isUnknownArray(value: unknown): value is unknown[] {
+    return Array.isArray(value);
+}
+
 /** Narrow an opaque value to a plain record, or undefined. */
 // eslint-disable-next-line no-restricted-syntax -- boundary: opaque value fed straight into the isRecord guard below
 export function asRecord(value: unknown): Record<string, unknown> | undefined {

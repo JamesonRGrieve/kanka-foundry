@@ -2,6 +2,8 @@ import type { KankaApiEntityId, KankaApiId, KankaApiMapMarker } from '../types/k
 import { logInfo } from '../util/logger';
 import { findEntryByEntityId } from './journalEntries';
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 /** New Scenes default to a 30px grid and zero padding (campaign convention). */
 const GRID_SIZE = 30;
 
@@ -74,8 +76,11 @@ export async function importKankaMapToNewScene(input: KankaMapSceneInput): Promi
         logInfo(`Scene: updated "${input.name}" from Kanka map`);
         return existing;
     }
-    // eslint-disable-next-line no-restricted-syntax -- boundary: Foundry's Scene.create static rejects our dynamic create payload; narrowed to the heterogeneous record baseSceneData emits
-    const created = await (Scene.create as (data: Record<string, unknown>) => Promise<Scene | undefined>)(baseSceneData(input));
+    // Foundry's Scene.create static rejects our dynamic create payload; it is typed once
+    // here to the heterogeneous record baseSceneData emits.
+    const createScene: unknown = Scene.create.bind(Scene);
+    assertType<(data: Record<string, unknown>) => Promise<Scene | undefined>>(createScene);
+    const created = await createScene(baseSceneData(input));
     if (created) {
         await refreshNotes(created, input.markers);
         logInfo(`Scene: created "${input.name}" from Kanka map`);

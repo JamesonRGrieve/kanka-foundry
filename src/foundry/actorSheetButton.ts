@@ -2,6 +2,7 @@ import api from '../api';
 import type { KankaApiId } from '../types/kanka';
 import { logError, logInfo } from '../util/logger';
 import { BIO_MAP, CHARACTERISTIC_REVERSE_MAP, ORIGIN_MAP, ROOT_STRING_MAP, STAT_REVERSE_MAP } from './actorAttributeMaps';
+import { entityReference } from './snapshotFields';
 function assertType<T>(_value: unknown): asserts _value is T {}
 
 function getSystemProp<T>(system: unknown, key: string): T | undefined {
@@ -104,7 +105,7 @@ async function pushActorToKanka(actor: Actor): Promise<void> {
         await actor.setFlag('kanka-foundry', 'kankaEntityId', kankaCharacter.entity_id);
         await actor.setFlag('kanka-foundry', 'kankaChildId', kankaCharacter.id);
         await actor.setFlag('kanka-foundry', 'campaign', numericCampaignId);
-        await actor.setFlag('kanka-foundry', 'snapshot', kankaCharacter);
+        await actor.setFlag('kanka-foundry', 'snapshot', entityReference(kankaCharacter));
         await actor.setFlag('kanka-foundry', 'version', kankaCharacter.updated_at);
 
         ui.notifications?.info(`Pushed "${actor.name}" to Kanka successfully.`);

@@ -14,6 +14,7 @@ import type {
 import isSecret from '../util/isSecret';
 import PageFactory from './PageFactory';
 import { ensureFolderPath } from './journalFolders';
+import { entityReference } from './snapshotFields';
 
 const CURRENT_JOURNAL_VERSION = '000003';
 
@@ -115,7 +116,7 @@ export async function createJournalEntry(
                 type,
                 id: entity.entity_id,
                 version: buildVersionString(entity),
-                snapshot: entity,
+                snapshot: entityReference(entity),
                 references: references.getRecord(),
             },
         },
@@ -150,7 +151,7 @@ export async function updateJournalEntry(
 
     await entry.deleteEmbeddedDocuments('JournalEntryPage', [], { deleteAll: true });
     await entry.update({
-        name: entry.name === oldName ? entity.name : oldName, // Keep existing journal name if it was renamed by user
+        name: oldName === undefined || entry.name === oldName ? entity.name : oldName, // Keep existing journal name if it was renamed by user
         folder: folder?.id,
         pages: createAllPages(campaignId, type, entity, references, entry),
         flags: {
@@ -159,7 +160,7 @@ export async function updateJournalEntry(
             },
             'kanka-foundry': {
                 version: buildVersionString(entity),
-                snapshot: entity,
+                snapshot: entityReference(entity),
                 references: references.getRecord(),
             },
         },

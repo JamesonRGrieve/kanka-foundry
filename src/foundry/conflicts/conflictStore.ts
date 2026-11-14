@@ -10,15 +10,10 @@
  */
 
 import { logError } from '../../util/logger';
+import { isUnknownArray } from '../../util/reflection';
 import { type StoredConflict, isStoredConflict } from './types';
 
 const SETTING_KEY = 'pendingConflicts';
-
-/** Narrow to an array without `Array.isArray`'s `any[]` widening. */
-// eslint-disable-next-line no-restricted-syntax -- boundary: type-guard parameter fed straight into the guard below
-function isUnknownArray(value: unknown): value is unknown[] {
-    return Array.isArray(value);
-}
 
 /** Read and validate the persisted conflict list. */
 export function listConflicts(): StoredConflict[] {

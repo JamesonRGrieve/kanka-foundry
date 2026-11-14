@@ -5,6 +5,8 @@ import { importKankaMapAdoptScene, importKankaMapToNewScene } from '../../foundr
 import type { KankaApiEntity, KankaApiMap } from '../../types/kanka';
 import { buildMapSceneInput, entityHasMap, findMapForChild, importMapAdoptScene, importMapToNewScene } from './mapImport';
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 vi.mock('../../api', () => ({ default: { getMapMarkers: vi.fn() } }));
 vi.mock('../../foundry/sceneFactory', () => ({
     importKankaMapToNewScene: vi.fn(),
@@ -27,7 +29,7 @@ class FakeImage {
 }
 
 function makeMap(overrides: Partial<KankaApiMap> = {}): KankaApiMap {
-    return {
+    const map: unknown = {
         id: 7,
         entity_id: 700,
         name: 'Solenne Minoris',
@@ -35,7 +37,9 @@ function makeMap(overrides: Partial<KankaApiMap> = {}): KankaApiMap {
         image_full: 'https://kanka.example/maps/solenne.webp',
         is_real: false,
         ...overrides,
-    } as KankaApiMap;
+    };
+    assertType<KankaApiMap>(map);
+    return map;
 }
 
 function makeEntity(childId: number): Pick<KankaApiEntity, 'child_id'> {
@@ -71,7 +75,8 @@ describe('map import dispatch', () => {
     });
 
     it('builds a scene input from the map, its markers and image dimensions', async () => {
-        const markers = [{ id: 5 }] as unknown as Awaited<ReturnType<typeof api.getMapMarkers>>;
+        const markers: unknown = [{ id: 5 }];
+        assertType<Awaited<ReturnType<typeof api.getMapMarkers>>>(markers);
         vi.mocked(api.getMapMarkers).mockResolvedValue(markers);
 
         const input = await buildMapSceneInput(3, makeMap());
@@ -92,12 +97,15 @@ describe('map import dispatch', () => {
         await importMapToNewScene(3, makeMap());
 
         expect(importKankaMapToNewScene).toHaveBeenCalledTimes(1);
-        expect(vi.mocked(importKankaMapToNewScene).mock.calls[0]?.[0]).toMatchObject({ kankaMapId: 7, backgroundUrl: expect.any(String) });
+        const input = vi.mocked(importKankaMapToNewScene).mock.calls[0]?.[0];
+        expect(input).toMatchObject({ kankaMapId: 7 });
+        expect(typeof input?.backgroundUrl).toBe('string');
         expect(importKankaMapAdoptScene).not.toHaveBeenCalled();
     });
 
     it('dispatches "adopt existing scene" to the scene factory with the chosen scene', async () => {
-        const scene = { id: 'scene-1', name: 'Existing' } as unknown as Scene;
+        const scene: unknown = { id: 'scene-1', name: 'Existing' };
+        assertType<Scene>(scene);
 
         await importMapAdoptScene(3, makeMap(), scene);
 

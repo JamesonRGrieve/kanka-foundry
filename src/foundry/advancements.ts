@@ -17,7 +17,7 @@
  * testable without a world.
  */
 
-import { type PlainObject, asRecord } from '../util/reflection';
+import { type PlainObject, asRecord, isUnknownArray } from '../util/reflection';
 
 /** A characteristic advance — N steps of +5 over the base's value. */
 interface CharacteristicAdvancement {
@@ -92,7 +92,7 @@ function isAdvancement(value: PlainObject[keyof PlainObject]): value is Advancem
  */
 // eslint-disable-next-line no-restricted-syntax -- boundary: the attribute arrives as untyped JSON from Kanka; this function IS the validation
 export function parseAdvancements(raw: unknown): Advancement[] {
-    if (!Array.isArray(raw)) return [];
+    if (!isUnknownArray(raw)) return [];
     const out: Advancement[] = [];
     for (const value of raw) {
         if (!isAdvancement(value)) continue;
@@ -154,7 +154,8 @@ export function advancementsToSystemPatch(advancements: Advancement[], baseSyste
         // already granted. Re-authoring one the base has bumps it instead of
         // adding a second track the roll engine would see as a different skill.
         const slug = specialisationSlug(adv.specialisation);
-        const priorRaw = Array.isArray(existingSkill?.['entries']) ? existingSkill['entries'] : [];
+        const entriesRaw: unknown = existingSkill?.['entries'];
+        const priorRaw = isUnknownArray(entriesRaw) ? entriesRaw : [];
         const prior: SkillEntry[] = [];
         let bumped = false;
         for (const entry of priorRaw) {

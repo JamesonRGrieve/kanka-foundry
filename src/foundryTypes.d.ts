@@ -1,9 +1,11 @@
+import type { EntityReference } from './foundry/snapshotFields';
 import type { CampaignDayChangedHook, EventResolvedHook, PcAttitudeChangedHook } from './foundry/eventTrackerSync';
 
 type FlagData = {
     id: KankaApiEntityId;
     campaign: KankaApiId;
-    snapshot: KankaApiChildEntity;
+    /** The part of the Kanka entity read back (wh40k-rpg#739): see `foundry/snapshotFields.ts`. */
+    snapshot: EntityReference;
     type: KankaApiModuleType;
     version: string;
     references: Record<number, Reference>;
@@ -13,7 +15,8 @@ type ActorFlagData = {
     kankaEntityId: KankaApiEntityId;
     kankaChildId: KankaApiId;
     campaign: KankaApiId;
-    snapshot: KankaApiChildEntity;
+    /** The part of the Kanka entity read back (wh40k-rpg#739): see `foundry/snapshotFields.ts`. */
+    snapshot: EntityReference;
     version: string;
     /** Interior Scene linked to a vehicle Actor (read by the wh40k-rpg system to "Board Interior"). */
     interiorSceneId?: string;

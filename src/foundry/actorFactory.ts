@@ -6,6 +6,7 @@ import { advancementsToSystemPatch, parseAdvancements } from './advancements';
 import { addConflicts } from './conflicts/conflictStore';
 import { type StoredConflict, conflictId } from './conflicts/types';
 import { syncTokenImage, type TokenFrameValue } from './tokenImage';
+import { entityReference } from './snapshotFields';
 
 interface ImportFieldConflict {
     path: string;
@@ -187,7 +188,7 @@ function createActorData(
                 kankaEntityId: entity.entity_id,
                 kankaChildId: entity.id,
                 campaign: campaignId,
-                snapshot: entity,
+                snapshot: entityReference(entity),
                 version: entity.updated_at,
             },
         },
@@ -515,9 +516,7 @@ export function missingBaseKit<T extends object>(existing: readonly KitItemRef[]
     const unclaimed = [...existing];
     return kit.filter((item) => {
         const want = kitRef(item);
-        const i = unclaimed.findIndex((have) =>
-            want.source !== undefined ? have.source === want.source : have.type === want.type && have.name === want.name,
-        );
+        const i = unclaimed.findIndex((have) => (want.source !== undefined ? have.source === want.source : have.type === want.type && have.name === want.name));
         if (i === -1) return true;
         unclaimed.splice(i, 1);
         return false;

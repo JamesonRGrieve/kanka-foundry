@@ -4,6 +4,8 @@ import { logInfo } from '../util/logger';
 import { createOrUpdateActor, getStringAttribute } from './actorFactory';
 import { importKankaMapToNewScene, type KankaMapSceneInput } from './sceneFactory';
 
+function assertType<T>(_value: unknown): asserts _value is T {}
+
 /**
  * Vehicle import (dual-nature vehicles).
  *
@@ -68,8 +70,11 @@ export async function importVehicle(
     // The base_actor chassis makes this a real Actor; createOrUpdateActor reads
     // the same attributes/name/entity_id a character exposes, so a vehicle Location
     // is structurally sufficient here. The base chassis' own actor type wins.
-    // eslint-disable-next-line no-restricted-syntax -- boundary: reuse the actor factory for a Location that carries a base_actor; only the shared KankaApiChildEntity fields are read
-    const actor = await createOrUpdateActor(entity as unknown as KankaApiCharacter, entityTags, campaignId, defaultActorType, pcTags, gameSystem);
+    // Reuse the actor factory for a Location that carries a base_actor; only the shared
+    // KankaApiChildEntity fields are read.
+    const asCharacter: unknown = entity;
+    assertType<KankaApiCharacter>(asCharacter);
+    const actor = await createOrUpdateActor(asCharacter, entityTags, campaignId, defaultActorType, pcTags, gameSystem);
 
     const maps = await api.getAllMaps(campaignId);
     const interior = findInteriorMap(maps, entity.id);

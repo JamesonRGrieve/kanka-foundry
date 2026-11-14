@@ -4,7 +4,11 @@ import { addConflicts } from './conflicts/conflictStore';
 import { type MarkerWritePayload, decideMarkerSync, reconcileSceneNote, registerSceneSyncBackHooks } from './sceneSyncBack';
 
 // Spies shared with the mocked KankaFetcher (hoisted so the vi.mock factory can reach them).
-const { post, patch, del } = vi.hoisted(() => ({ post: vi.fn(), patch: vi.fn(), del: vi.fn() }));
+const { post, patch, del } = vi.hoisted(() => ({
+    post: vi.fn<(path: string, body: object) => Promise<object>>(),
+    patch: vi.fn<(path: string, body: object) => Promise<object>>(),
+    del: vi.fn<(path: string) => Promise<void>>(),
+}));
 
 vi.mock('../api/KankaFetcher', () => ({
     default: class {

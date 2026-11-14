@@ -2,6 +2,7 @@ import type { KankaApiAttribute, KankaApiId, KankaApiItem } from '../types/kanka
 import { logError, logInfo } from '../util/logger';
 import { type PlainObject, asRecord, isRecord, readFunction, readProp, readRecord, readString } from '../util/reflection';
 import { validateItemSystem } from './contentSchema';
+import { entityReference } from './snapshotFields';
 
 function assertType<T>(_value: unknown): asserts _value is T {}
 
@@ -204,7 +205,7 @@ export function buildWorldItemData(
                 entityId: entity.id,
                 kankaEntityId: entity.entity_id,
                 campaign: campaignId,
-                snapshot: entity,
+                snapshot: entityReference(entity),
                 version: entity.updated_at,
                 compendiumSource: compendiumUuid,
             },
