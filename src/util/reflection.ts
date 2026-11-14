@@ -30,6 +30,10 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Type a value at a Foundry or JSON boundary whose shape the caller has established. */
+// eslint-disable-next-line no-restricted-syntax -- boundary: the one place an established shape is asserted
+export function assertType<T>(_value: unknown): asserts _value is T {}
+
 /** Narrow to an array without `Array.isArray`'s `any[]` widening. */
 // eslint-disable-next-line no-restricted-syntax -- boundary: type-guard parameter fed straight into the guard below
 export function isUnknownArray(value: unknown): value is unknown[] {

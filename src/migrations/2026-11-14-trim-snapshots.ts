@@ -1,14 +1,7 @@
+import { hasOpenPageConflicts } from '../foundry/journalPageSync';
 import { entityReference, overviewSnapshot, replacing } from '../foundry/snapshotFields';
 import { logError, logInfo } from '../util/logger';
-
-function assertType<T>(_value: unknown): asserts _value is T {}
-
-/** The flag update for `snapshot`, typed at the Foundry boundary: the typings can't express a forced replacement. */
-function flagUpdate<T>(snapshot: Record<string, unknown>): T {
-    const update: unknown = { flags: { 'kanka-foundry': { snapshot: replacing(snapshot) } } };
-    assertType<T>(update);
-    return update;
-}
+import { asRecord, assertType, type PlainObject, readProp } from '../util/reflection';
 
 /**
  * Trim the Kanka copies already stored in a world (wh40k-rpg#739).
@@ -19,6 +12,10 @@ function flagUpdate<T>(snapshot: Record<string, unknown>): T {
  * reference fields on the flags, the overview's fields on the overview page, and
  * nothing on a post page (its content is its own text). Each value is written as
  * a forced replacement, as an update otherwise merges and keeps the old keys.
+ *
+ * It changes nothing a reader sees: every field a template or reader uses is kept
+ * (the template guard test holds the overview list to the templates). A journal
+ * with a page conflict still open in the Conflict Resolver is left for later.
  */
 
 /** A page as the migration reads it. */
@@ -29,7 +26,7 @@ export interface StoredPage {
 }
 
 /** The trimmed snapshot for a stored page, or null when it needs no change. */
-export function trimmedPageSnapshot(page: StoredPage): Record<string, unknown> | null {
+export function trimmedPageSnapshot(page: StoredPage): PlainObject | null {
     if (page.snapshot === undefined) return null;
     if (page.type === 'kanka-foundry.post') return Object.keys(page.snapshot).length === 0 ? null : {};
     if (page.type === 'kanka-foundry.overview') {
@@ -40,66 +37,73 @@ export function trimmedPageSnapshot(page: StoredPage): Record<string, unknown> |
 }
 
 /** The trimmed `snapshot` flag, or null when it is already a reference. */
-export function trimmedFlagSnapshot(snapshot: object | undefined): Record<string, unknown> | null {
+export function trimmedFlagSnapshot(snapshot: object | undefined): PlainObject | null {
     if (snapshot === undefined) return null;
-    const reference: Record<string, unknown> = { ...entityReference(snapshot) };
+    const reference: PlainObject = { ...entityReference(snapshot) };
     return Object.keys(reference).length === Object.keys(snapshot).length ? null : reference;
 }
 
-function objectOrUndefined(value: unknown): object | undefined {
-    return value !== null && typeof value === 'object' ? value : undefined;
+/** A Kanka flag value as an object, or undefined. */
+function flagObject(document: { readonly flags: object }, key: string): object | undefined {
+    return asRecord(asRecord(Reflect.get(document.flags, 'kanka-foundry'))?.[key]);
 }
 
+/** A page's stored snapshot, as an object, or undefined. */
 function pageSnapshot(page: JournalEntryPage): object | undefined {
-    return objectOrUndefined(Reflect.get(objectOrUndefined(page.system) ?? {}, 'snapshot'));
+    return asRecord(asRecord(page.system)?.['snapshot']);
+}
+
+/** The page updates that trim one journal, typed at the Foundry boundary. */
+function pageUpdates(entry: JournalEntry): JournalEntryPage.UpdateData[] {
+    const updates = Array.from(entry.pages.values()).flatMap((page) => {
+        const snapshot = trimmedPageSnapshot({ id: page.id, type: page.type, snapshot: pageSnapshot(page) });
+        return snapshot === null ? [] : [{ _id: page.id, system: { snapshot: replacing(snapshot) } }];
+    });
+    assertType<JournalEntryPage.UpdateData[]>(updates);
+    return updates;
+}
+
+/** The `snapshot` flag update for each document that still carries a whole entity, by id. */
+function flagUpdates<T>(documents: ReadonlyArray<{ readonly id: string | null; readonly flags: object }>): T[] {
+    const updates = documents.flatMap((document) => {
+        const flag = trimmedFlagSnapshot(flagObject(document, 'snapshot'));
+        return flag === null || document.id === null ? [] : [{ _id: document.id, flags: { 'kanka-foundry': { snapshot: replacing(flag) } } }];
+    });
+    assertType<T[]>(updates);
+    return updates;
+}
+
+/** Whether a document was made by the importer. */
+function isKankaDocument(document: { readonly flags: object }, idKey: string): boolean {
+    return asRecord(Reflect.get(document.flags, 'kanka-foundry'))?.[idKey] !== undefined;
 }
 
 export default async function migrate(): Promise<void> {
-    let trimmed = 0;
-    let failed = 0;
+    const journals = Array.from(game.journal?.values() ?? []).filter((entry) => isKankaDocument(entry, 'id') && !hasOpenPageConflicts(entry.id));
+    const pageResults = await Promise.allSettled(
+        journals.map(async (entry) => {
+            const updates = pageUpdates(entry);
+            if (updates.length > 0) await entry.updateEmbeddedDocuments('JournalEntryPage', updates);
+            return updates.length;
+        }),
+    );
+    const failed = pageResults.filter((result) => result.status === 'rejected');
+    for (const result of failed) logError("Trim snapshots: a journal's pages failed", readProp(result, 'reason'));
 
-    const journals = Array.from(game.journal?.values() ?? []).filter((e) => e.getFlag('kanka-foundry', 'id'));
-    for (const entry of journals) {
-        try {
-            const pageUpdates: unknown = Array.from(entry.pages.values()).flatMap((page) => {
-                const snapshot = trimmedPageSnapshot({ id: page.id ?? '', type: page.type, snapshot: pageSnapshot(page) });
-                return snapshot === null ? [] : [{ _id: page.id, system: { snapshot: replacing(snapshot) } }];
-            });
-            assertType<JournalEntryPage.UpdateData[]>(pageUpdates);
-            if (pageUpdates.length > 0) await entry.updateEmbeddedDocuments('JournalEntryPage', pageUpdates);
-            const flag = trimmedFlagSnapshot(objectOrUndefined(entry.getFlag('kanka-foundry', 'snapshot')));
-            if (flag !== null) await entry.update(flagUpdate<JournalEntry.UpdateData>(flag));
-            if (pageUpdates.length > 0 || flag !== null) trimmed += 1;
-        } catch (error) {
-            failed += 1;
-            logError(`Trim snapshots: journal "${entry.name}" failed`, error);
-        }
-    }
-
-    for (const actor of Array.from(game.actors?.values() ?? []).filter((a: Actor) => a.getFlag('kanka-foundry', 'kankaEntityId'))) {
-        try {
-            const flag = trimmedFlagSnapshot(objectOrUndefined(actor.getFlag('kanka-foundry', 'snapshot')));
-            if (flag === null) continue;
-            await actor.update(flagUpdate<Actor.UpdateData>(flag));
-            trimmed += 1;
-        } catch (error) {
-            failed += 1;
-            logError(`Trim snapshots: actor "${actor.name}" failed`, error);
-        }
-    }
+    const journalFlags = flagUpdates<JournalEntry.UpdateData>(journals);
+    const actorFlags = flagUpdates<Actor.UpdateData>(Array.from(game.actors?.values() ?? []).filter((actor) => isKankaDocument(actor, 'kankaEntityId')));
     // A world Item made by the item bridge carries the same flag (itemBridge.ts).
-    for (const item of Array.from(game.items?.values() ?? [])) {
-        const raw: unknown = Reflect.get(objectOrUndefined(Reflect.get(objectOrUndefined(item.flags) ?? {}, 'kanka-foundry')) ?? {}, 'snapshot');
-        const flag = trimmedFlagSnapshot(objectOrUndefined(raw));
-        if (flag === null) continue;
-        try {
-            await item.update(flagUpdate<Item.UpdateData>(flag));
-            trimmed += 1;
-        } catch (error) {
-            failed += 1;
-            logError(`Trim snapshots: item "${item.name}" failed`, error);
-        }
+    const itemFlags = flagUpdates<Item.UpdateData>(Array.from(game.items?.values() ?? []).filter((item) => isKankaDocument(item, 'kankaEntityId')));
+    try {
+        if (journalFlags.length > 0) await JournalEntry.updateDocuments(journalFlags);
+        if (actorFlags.length > 0) await Actor.updateDocuments(actorFlags);
+        if (itemFlags.length > 0) await Item.updateDocuments(itemFlags);
+    } catch (error) {
+        logError('Trim snapshots: a flag update failed', error);
     }
 
-    logInfo(`Trim snapshots: trimmed ${trimmed} documents${failed > 0 ? `, ${failed} failed` : ''}.`);
+    const pagesTrimmed = pageResults.reduce((sum, result) => sum + (result.status === 'fulfilled' ? result.value : 0), 0);
+    logInfo(
+        `Trim snapshots: ${pagesTrimmed} pages and ${journalFlags.length + actorFlags.length + itemFlags.length} flags trimmed${failed.length > 0 ? `, ${failed.length} journals failed` : ''}.`,
+    );
 }

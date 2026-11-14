@@ -18,6 +18,7 @@ KANKA:
         reimportNote: Choosing Kanka requires a manual re-import.
         reimportRequired: This collection must be re-imported from Kanka to apply its value.
         allResolved: All Kanka conflicts resolved.
+        journalPages: "{count} page(s) of {name} differ from Kanka. Choose which to keep in the Kanka conflict resolver."
 
     sidebar:
         button: Import from Kanka

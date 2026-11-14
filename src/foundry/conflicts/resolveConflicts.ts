@@ -6,7 +6,9 @@
  * the ready hook talk to.
  */
 
+import { rebuildJournalPage } from '../../syncEntities';
 import { applyCampaignConflict, isCampaignConflictValid } from '../campaignJournal';
+import { applyJournalConflict, isJournalConflictValid } from '../journalPageSync';
 import { applyActorConflict, recomputeActorConflictIds } from '../syncBack';
 import { listConflicts, removeConflict, setConflicts } from './conflictStore';
 import type { ConflictChoice, StoredConflict } from './types';
@@ -39,6 +41,8 @@ export async function revalidateConflicts(): Promise<StoredConflict[]> {
     for (const conflict of all) {
         if (conflict.entityType === 'actor') {
             if (validIdsByActor.get(conflict.entityId)?.has(conflict.id) === true) kept.push(conflict);
+        } else if (conflict.entityType === 'journal') {
+            if (isJournalConflictValid(conflict)) kept.push(conflict);
         } else if (!staleCampaignIds.has(conflict.id)) {
             kept.push(conflict);
         }
@@ -56,7 +60,10 @@ export async function resolveConflict(id: string, choice: ConflictChoice): Promi
     const conflict = listConflicts().find((candidate) => candidate.id === id);
     if (!conflict) return false;
 
-    const applied = conflict.entityType === 'actor' ? await applyActorConflict(conflict, choice) : await applyCampaignConflict(conflict, choice);
+    let applied: boolean;
+    if (conflict.entityType === 'actor') applied = await applyActorConflict(conflict, choice);
+    else if (conflict.entityType === 'journal') applied = await applyJournalConflict(conflict, choice, rebuildJournalPage);
+    else applied = await applyCampaignConflict(conflict, choice);
 
     if (applied) await removeConflict(id);
     return applied;

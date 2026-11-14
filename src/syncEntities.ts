@@ -2,7 +2,8 @@ import loaders from './api/typeLoaders';
 import type AbstractTypeLoader from './api/typeLoaders/AbstractTypeLoader';
 import { createOrUpdateActor } from './foundry/actorFactory';
 import { bridgeKankaItem } from './foundry/itemBridge';
-import { createJournalEntry, updateJournalEntry } from './foundry/journalEntries';
+import { buildJournalPages, createJournalEntry, updateJournalEntry } from './foundry/journalEntries';
+import { type PageData, pageKey } from './foundry/journalPageSync';
 import { showWarning } from './foundry/notifications';
 import { importVehicle, isVehicleEntity } from './foundry/vehicleImport';
 import type { KankaApiCharacter, KankaApiChildEntity, KankaApiEntity, KankaApiId, KankaApiItem, KankaApiModuleType } from './types/kanka';
@@ -129,6 +130,23 @@ export async function createEntities(campaignId: KankaApiId, type: KankaApiModul
     if (failedIds.length > 0) {
         showWarning('browser.error.skippedEntities', { count: String(failedIds.length), ids: failedIds.join(', ') });
     }
+}
+
+/**
+ * The import's version of one page of `entry`, rebuilt from a fresh Kanka fetch, for
+ * the Conflict Resolver's "take Kanka" (journalPageSync). Null when Kanka no longer
+ * has that page.
+ */
+export async function rebuildJournalPage(entry: JournalEntry, key: string): Promise<PageData | null> {
+    const type = entry.getFlag('kanka-foundry', 'type');
+    const campaignId = entry.getFlag('kanka-foundry', 'campaign');
+    const snapshot = entry.getFlag('kanka-foundry', 'snapshot');
+    if (!type || !campaignId || snapshot?.id === undefined) return null;
+    const loader = loaders.get(type);
+    if (!loader) return null;
+    const entity = await loader.load(campaignId, snapshot.id);
+    const references = await loader.createReferenceCollection(campaignId, entity);
+    return buildJournalPages(campaignId, type, entity, references, entry).find((page) => pageKey(page) === key) ?? null;
 }
 
 export async function updateEntity(entry: JournalEntry, entityLookup?: KankaApiEntity[]): Promise<void> {

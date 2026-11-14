@@ -15,8 +15,7 @@
  * - a post page: nothing, as its sheet renders `text.content`.
  */
 import type { KankaApiChildEntity } from '../types/kanka';
-
-function assertType<T>(_value: unknown): asserts _value is T {}
+import { assertType, type PlainObject, readProp } from '../util/reflection';
 
 /** The entity fields the journal / actor `snapshot` flag keeps. */
 export const ENTITY_REFERENCE_FIELDS = ['id', 'entity_id', 'name', 'is_completed', 'has_custom_image', 'image_full', 'image_thumb', 'urls'] as const;
@@ -71,8 +70,8 @@ export const OVERVIEW_SNAPSHOT_FIELDS = [
 ] as const;
 
 /** The listed fields of `entity` that it carries, and no others. */
-function pick(entity: object, fields: readonly string[]): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
+function pick(entity: object, fields: readonly string[]): PlainObject {
+    const out: PlainObject = {};
     for (const field of fields) {
         if (field in entity) out[field] = Reflect.get(entity, field);
     }
@@ -81,13 +80,13 @@ function pick(entity: object, fields: readonly string[]): Record<string, unknown
 
 /** The `snapshot` flag a journal or actor keeps for `entity`. */
 export function entityReference(entity: object): EntityReference {
-    const reference: unknown = pick(entity, ENTITY_REFERENCE_FIELDS);
+    const reference = pick(entity, ENTITY_REFERENCE_FIELDS);
     assertType<EntityReference>(reference);
     return reference;
 }
 
 /** The snapshot an overview page keeps for `entity`. */
-export function overviewSnapshot(entity: object): Record<string, unknown> {
+export function overviewSnapshot(entity: object): PlainObject {
     return pick(entity, OVERVIEW_SNAPSHOT_FIELDS);
 }
 
@@ -103,7 +102,7 @@ interface ReplacementOperators {
  */
 export function replacing<T>(value: T): T {
     if (typeof foundry === 'undefined') return value;
-    const operators: unknown = Reflect.get(foundry.data, 'operators');
+    const operators = readProp(foundry.data, 'operators');
     assertType<ReplacementOperators | undefined>(operators);
     return operators === undefined ? value : operators.ForcedReplacement.create(value);
 }

@@ -13,7 +13,10 @@ import type {
 } from '../types/kanka';
 import isSecret from '../util/isSecret';
 import PageFactory from './PageFactory';
+import { addConflicts } from './conflicts/conflictStore';
 import { ensureFolderPath } from './journalFolders';
+import { journalPages, markImported, type PageData, planPageSync, toPageConflict } from './journalPageSync';
+import { showInfo } from './notifications';
 import { entityReference } from './snapshotFields';
 
 const CURRENT_JOURNAL_VERSION = '000003';
@@ -60,6 +63,19 @@ export function hasOutdatedEntryByEntity(entity: KankaApiEntity): boolean {
     return buildVersionString(entity) > currentVersion;
 }
 
+/** The pages an import writes for `entity`, each marked as the import's own (journalPageSync). */
+export function buildJournalPages(
+    campaignId: KankaApiId,
+    type: KankaApiModuleType,
+    entity: KankaApiChildEntity | KankaApiChildEntityWithChildren,
+    references: ReferenceCollection,
+    journal?: JournalEntry,
+): PageData[] {
+    const pages: unknown = createAllPages(campaignId, type, entity, references, journal);
+    assertType<PageData[]>(pages);
+    return pages;
+}
+
 function createAllPages(
     campaignId: KankaApiId,
     type: KankaApiModuleType,
@@ -86,7 +102,9 @@ function createAllPages(
         pageFactory.createInventoryPage(),
         pageFactory.createEventsPage(),
         pageFactory.createChildrenPage(),
-    ].filter((page) => !!page);
+    ]
+        .filter((page) => !!page)
+        .map(markImported);
 }
 
 export async function createJournalEntry(
@@ -149,11 +167,13 @@ export async function updateJournalEntry(
             .filter((ref): ref is Reference => !!ref) ?? [];
     const folder = await ensureFolderPath(type, path);
 
-    await entry.deleteEmbeddedDocuments('JournalEntryPage', [], { deleteAll: true });
+    // Compare before overwriting (wh40k-rpg#739): pages the journal lacks are
+    // created; a page that differs from Kanka's version, or that Kanka removed,
+    // goes to the Conflict Resolver; matching pages and a GM's own pages are kept.
+    const plan = planPageSync(journalPages(entry), buildJournalPages(campaignId, type, entity, references, entry));
     await entry.update({
         name: oldName === undefined || entry.name === oldName ? entity.name : oldName, // Keep existing journal name if it was renamed by user
         folder: folder?.id,
-        pages: createAllPages(campaignId, type, entity, references, entry),
         flags: {
             'core': {
                 sheetClass: `${moduleConfig.name}.KankaJournalApplication`,
@@ -166,6 +186,15 @@ export async function updateJournalEntry(
         },
         ownership: getOwnership([entity], entry.ownership),
     });
+    if (plan.create.length > 0) {
+        const created: unknown = plan.create;
+        assertType<JournalEntryPage.CreateData[]>(created);
+        await entry.createEmbeddedDocuments('JournalEntryPage', created);
+    }
+    if (plan.conflicts.length > 0) {
+        await addConflicts(plan.conflicts.map((conflict) => toPageConflict(entry.id ?? '', entry.name, conflict)));
+        showInfo('conflicts', 'journalPages', { count: String(plan.conflicts.length), name: entry.name });
+    }
 
     return entry;
 }

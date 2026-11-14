@@ -15,7 +15,7 @@ import { asRecord } from '../../util/reflection';
 export type ConflictChoice = 'kanka' | 'foundry';
 
 /** The entity a conflict belongs to — drives which apply/revalidate path runs. */
-export type ConflictEntityType = 'actor' | 'campaign';
+export type ConflictEntityType = 'actor' | 'campaign' | 'journal';
 
 /**
  * The shape of the conflicting field. Determines how a chosen value is coerced
@@ -26,8 +26,10 @@ export type ConflictEntityType = 'actor' | 'campaign';
  *   pushed Foundry → Kanka, but cannot be auto-applied Kanka → Foundry
  *   (rebuilding embedded items from JSON requires a manual re-import).
  * - `campaignDescription` — the campaign description journal body.
+ * - `journalPage` — a page a re-import would change on an entity's journal
+ *   (`journalPageSync.ts`, wh40k-rpg#739).
  */
-export type ConflictKind = 'characteristic' | 'stat' | 'bio' | 'origin' | 'rootString' | 'snapshot' | 'campaignDescription';
+export type ConflictKind = 'characteristic' | 'stat' | 'bio' | 'origin' | 'rootString' | 'snapshot' | 'campaignDescription' | 'journalPage';
 
 export interface StoredConflict {
     /** Stable identity used for dedupe and per-row resolution. */
@@ -45,6 +47,8 @@ export interface StoredConflict {
     foundryPath: string;
     kankaValue: string;
     foundryValue: string;
+    /** JSON the apply path needs for a kind with no single field to write (`journalPage`: the page and Kanka's version). */
+    payload?: string;
 }
 
 /** A single field difference found by the actor reconcile pass, before it is
@@ -61,9 +65,18 @@ export function isNumericKind(kind: ConflictKind): boolean {
     return kind === 'characteristic' || kind === 'stat';
 }
 
-const CONFLICT_KINDS: ReadonlySet<string> = new Set<ConflictKind>(['characteristic', 'stat', 'bio', 'origin', 'rootString', 'snapshot', 'campaignDescription']);
+const CONFLICT_KINDS: ReadonlySet<string> = new Set<ConflictKind>([
+    'characteristic',
+    'stat',
+    'bio',
+    'origin',
+    'rootString',
+    'snapshot',
+    'campaignDescription',
+    'journalPage',
+]);
 
-const ENTITY_TYPES: ReadonlySet<string> = new Set<ConflictEntityType>(['actor', 'campaign']);
+const ENTITY_TYPES: ReadonlySet<string> = new Set<ConflictEntityType>(['actor', 'campaign', 'journal']);
 
 /** Runtime guard for a persisted conflict — defends against stale/corrupt setting data. */
 // eslint-disable-next-line no-restricted-syntax -- boundary: validating opaque JSON parsed from a world setting
@@ -82,6 +95,7 @@ export function isStoredConflict(value: unknown): value is StoredConflict {
         typeof v['kankaAttr'] === 'string' &&
         typeof v['foundryPath'] === 'string' &&
         typeof v['kankaValue'] === 'string' &&
-        typeof v['foundryValue'] === 'string'
+        typeof v['foundryValue'] === 'string' &&
+        (v['payload'] === undefined || typeof v['payload'] === 'string')
     );
 }
