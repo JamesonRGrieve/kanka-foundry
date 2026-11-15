@@ -30,8 +30,9 @@ export function trimmedPageSnapshot(page: StoredPage): PlainObject | null {
     if (page.snapshot === undefined) return null;
     if (page.type === 'kanka-foundry.post') return Object.keys(page.snapshot).length === 0 ? null : {};
     if (page.type === 'kanka-foundry.overview') {
+        // By content: a trim can now shorten a kept field (the relations), not only drop fields.
         const trimmed = overviewSnapshot(page.snapshot);
-        return Object.keys(trimmed).length === Object.keys(page.snapshot).length ? null : trimmed;
+        return JSON.stringify(trimmed) === JSON.stringify(page.snapshot) ? null : trimmed;
     }
     return null;
 }

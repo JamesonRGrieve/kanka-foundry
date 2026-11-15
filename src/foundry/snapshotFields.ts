@@ -15,7 +15,7 @@
  * - a post page: nothing, as its sheet renders `text.content`.
  */
 import type { KankaApiChildEntity } from '../types/kanka';
-import { assertType, type PlainObject, readProp } from '../util/reflection';
+import { asRecord, assertType, isUnknownArray, type PlainObject, readProp } from '../util/reflection';
 
 /** The entity fields the journal / actor `snapshot` flag keeps. */
 export const ENTITY_REFERENCE_FIELDS = ['id', 'entity_id', 'name', 'is_completed', 'has_custom_image', 'image_full', 'image_thumb', 'urls'] as const;
@@ -85,9 +85,17 @@ export function entityReference(entity: object): EntityReference {
     return reference;
 }
 
-/** The snapshot an overview page keeps for `entity`. */
+/**
+ * The snapshot an overview page keeps for `entity`. Its relations are only the
+ * starred ones, the only ones the overview shows: the whole list is the relations
+ * page's, and a second copy of it cost ~5 MB of the live payload (a character in a
+ * large family carries over a thousand).
+ */
 export function overviewSnapshot(entity: object): PlainObject {
-    return pick(entity, OVERVIEW_SNAPSHOT_FIELDS);
+    const snapshot = pick(entity, OVERVIEW_SNAPSHOT_FIELDS);
+    const relations = snapshot['relations'];
+    if (isUnknownArray(relations)) snapshot['relations'] = relations.filter((relation) => asRecord(relation)?.['is_star'] === true);
+    return snapshot;
 }
 
 /** The part of `foundry.data.operators` this module uses; the V14 typings don't declare it yet. */

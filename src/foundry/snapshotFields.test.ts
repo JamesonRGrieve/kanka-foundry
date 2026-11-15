@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import trimMigration, { trimmedFlagSnapshot, trimmedPageSnapshot } from '../migrations/2026-11-14-trim-snapshots';
+import starredRelationsMigration from '../migrations/2026-11-15-starred-relations';
 import { ENTITY_REFERENCE_FIELDS, entityReference, OVERVIEW_SNAPSHOT_FIELDS, overviewSnapshot } from './snapshotFields';
 
 const overviewTemplates = import.meta.glob(['../apps/KankaJournal/pages/*-overview.hbs', '../apps/KankaJournal/shared/*.hbs'], {
@@ -39,6 +40,11 @@ describe('the overview snapshot (wh40k-rpg#739)', () => {
     it('keeps those fields and drops the rest of the entity', () => {
         expect(overviewSnapshot(ENTITY)).toEqual({ relations: ENTITY.relations, type: 'Hab block', is_completed: false });
     });
+
+    it('keeps only the starred relations, the ones the overview shows', () => {
+        const family = { ...ENTITY, relations: [{ target_id: 3, is_star: true }, { target_id: 4, is_star: false }, { target_id: 5 }] };
+        expect(overviewSnapshot(family)['relations']).toEqual([{ target_id: 3, is_star: true }]);
+    });
 });
 
 describe('the snapshot flag reference', () => {
@@ -68,7 +74,22 @@ describe('the trim migration', () => {
         expect(trimmedFlagSnapshot(undefined)).toBeNull();
     });
 
-    it('is a migration module', () => {
+    it('cuts an already-trimmed overview whose relations still hold unstarred ones', () => {
+        const kept = {
+            relations: [
+                { target_id: 3, is_star: true },
+                { target_id: 4, is_star: false },
+            ],
+            type: 'Hab block',
+        };
+        expect(trimmedPageSnapshot({ id: 'g', type: 'kanka-foundry.overview', snapshot: kept })).toEqual({
+            relations: [{ target_id: 3, is_star: true }],
+            type: 'Hab block',
+        });
+    });
+
+    it('is a migration module, re-run by the starred-relations migration', () => {
         expect(typeof trimMigration).toBe('function');
+        expect(starredRelationsMigration).toBe(trimMigration);
     });
 });
