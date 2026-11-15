@@ -43,7 +43,10 @@ export function registerSettings(): void {
         return map;
     }, {});
 
+    // Per world: the migrations it tracks rewrite world journals. Per browser (Foundry's
+    // default), a GM in a fresh browser read it empty and re-ran every migration.
     game.settings?.register('kanka-foundry', 'migrationVersion', {
+        scope: 'world',
         config: false,
         type: String,
         default: '',
